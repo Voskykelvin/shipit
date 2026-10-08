@@ -1,0 +1,21 @@
+{
+  "name": "shipit-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "packages/*",
+    "apps/*",
+    "services/*"
+  ],
+  "scripts": {
+    "dev:staff": "npm run dev --workspace=@shipit/staff-portal",
+    "dev:merchant": "npm run dev --workspace=@shipit/merchant-portal",
+    "dev:rider": "npm run dev --workspace=@shipit/rider-pwa",
+    "dev:api": "npm run dev --workspace=@shipit/api",
+    "build": "npm run build --workspaces --if-present",
+    "typecheck": "npm run typecheck --workspaces --if-present"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3"
+  }
+}
