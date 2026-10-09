@@ -1,0 +1,830 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum AccountStatus {
+  ACTIVE
+  SUSPENDED
+  ONBOARDING
+}
+
+enum InventoryTransactionType {
+  ASN_RECEIVE
+  ORDER_RESERVE
+  ORDER_PICK
+  ORDER_CANCEL_RELEASE
+  RETURN_RESTOCK
+  RETURN_DAMAGED
+  RETURN_QUARANTINE
+  SUPERVISOR_ADJUSTMENT
+}
+
+enum InboundStatus {
+  EXPECTED
+  PARTIALLY_RECEIVED
+  COMPLETED
+  CANCELLED
+}
+
+enum PickWaveStatus {
+  CREATED
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum OrderStatus {
+  PENDING_VERIFICATION
+  CONFIRMED
+  READY_FOR_PICK
+  PICKING
+  PACKED
+  MANIFESTED
+  DISPATCHED
+  OUT_FOR_DELIVERY
+  DELIVERED
+  NDR_EXCEPTION
+  RETURN_IN_TRANSIT
+  RETURNED_TO_WAREHOUSE
+  CANCELLED
+}
+
+enum PaymentMethod {
+  COD_MPESA
+  COD_CASH
+  PREPAID
+}
+
+enum ManifestStatus {
+  STAGED
+  ACCEPTED_BY_RIDER
+  IN_TRANSIT
+  CLOSED
+}
+
+enum RiderStatus {
+  OFF_DUTY
+  ON_DUTY
+  IN_TRANSIT
+}
+
+enum DeliveryAttemptStatus {
+  SUCCESS
+  FAILED
+}
+
+enum DeliveryFailureReason {
+  CUSTOMER_UNREACHABLE
+  WRONG_LOCATION
+  RESCHEDULE_REQUESTED
+  REFUSED_DELIVERY
+  CASH_SHORTAGE
+}
+
+enum NdrStatus {
+  OPEN
+  ESCALATED
+  RESOLVED_FOR_REDELIVERY
+  RESOLVED_FOR_RTO
+}
+
+enum PaymentChannel {
+  MPESA_STK
+  MPESA_C2B
+  CASH
+  PREPAID
+}
+
+enum CodStatus {
+  PENDING_SETTLEMENT
+  RECONCILED
+  DISPUTED
+}
+
+enum LedgerTransactionType {
+  COD_CREDIT
+  FULFILLMENT_FEE_DEBIT
+  STORAGE_FEE_DEBIT
+  DELIVERY_FEE_DEBIT
+  COD_COMMISSION_DEBIT
+  RETURN_PENALTY_DEBIT
+  SETTLEMENT_PAYOUT_DEBIT
+  ADJUSTMENT
+}
+
+enum SettlementStatus {
+  DRAFT
+  APPROVED
+  PROCESSED
+  PAID
+}
+
+enum ReturnType {
+  IMMEDIATE_RTO
+  CUSTOMER_POST_DELIVERY_RETURN
+}
+
+enum ReturnStatus {
+  RETURN_INITIATED
+  IN_TRANSIT
+  RECEIVED_AT_WAREHOUSE
+  INSPECTED
+}
+
+enum ReturnConditionGrade {
+  GRADE_A_RESTOCKABLE
+  GRADE_B_DAMAGED_PACKAGING
+  GRADE_C_DAMAGED_PRODUCT
+  WRONG_ITEM_RETURNED
+}
+
+enum ReturnInspectionAction {
+  RESTOCKED_TO_AVAILABLE
+  QUARANTINED
+  RETURNED_TO_MERCHANT
+}
+
+enum MpesaStkRequestStatus {
+  INITIATED
+  SUCCEEDED
+  FAILED
+}
+
+enum MpesaB2CPayoutStatus {
+  INITIATED
+  ACCEPTED
+  OUTCOME_UNKNOWN
+  SUCCEEDED
+  FAILED
+}
+
+model Merchant {
+  id              String        @id @default(cuid())
+  code            String        @unique
+  name            String
+  contactEmail    String
+  contactPhone    String
+  status          AccountStatus @default(ONBOARDING)
+  rateCardId      String?
+  mpesaB2cPhone   String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  users           User[]
+  products        Product[]
+  orders          Order[]
+  inventoryEvents InventoryTransaction[]
+  auditLogs       AuditLog[]
+  inboundShipments InboundShipment[]
+  codTransactions CODTransaction[]
+  ledgerEntries   MerchantLedger[]
+  settlements     MerchantSettlement[]
+  returns         ReturnRecord[]
+  mpesaStkRequests MpesaStkRequest[]
+  rateCard        RateCard?     @relation(fields: [rateCardId], references: [id], onDelete: SetNull)
+
+  @@index([status])
+}
+
+model RateCard {
+  id                       String     @id @default(cuid())
+  name                     String     @unique
+  storagePerBinDayKes      Int        @default(0)
+  pickPackBaseFeeKes       Int        @default(0)
+  deliveryIntraNairobiKes  Int        @default(0)
+  deliveryUpcountryKes     Int        @default(0)
+  codCommissionBasisPoints Int        @default(0)
+  codCommissionMinKes      Int        @default(0)
+  rtoReturnFeeKes          Int        @default(0)
+  merchants                Merchant[]
+}
+
+model User {
+  id           String        @id @default(cuid())
+  merchantId   String?
+  email        String        @unique
+  phoneNumber  String
+  passwordHash String
+  firstName    String
+  lastName     String
+  status       AccountStatus @default(ONBOARDING)
+  lastLoginAt  DateTime?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  merchant     Merchant?     @relation(fields: [merchantId], references: [id], onDelete: Restrict)
+  roleLinks    UserRole[]
+  auditLogs    AuditLog[]
+  inventoryEvents InventoryTransaction[] @relation("InventoryPerformedBy")
+  approvedInventoryEvents InventoryTransaction[] @relation("InventoryApprovedBy")
+  sessions     AuthSession[]
+  riderProfile Rider?
+  pickedAllocations OrderAllocation[] @relation("AllocationPickedBy")
+  returnInspections ReturnInspection[]
+  assignedPickWaves PickWave[] @relation("PickWaveAssignee")
+
+  @@index([merchantId, status])
+}
+
+model Role {
+  id          String           @id @default(cuid())
+  name        String           @unique
+  description String?
+  users       UserRole[]
+  permissions RolePermission[]
+}
+
+model Permission {
+  id          String           @id @default(cuid())
+  slug        String           @unique
+  description String?
+  roles       RolePermission[]
+}
+
+model UserRole {
+  userId     String
+  roleId     String
+  assignedAt DateTime @default(now())
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role       Role     @relation(fields: [roleId], references: [id], onDelete: Restrict)
+
+  @@id([userId, roleId])
+  @@index([roleId])
+}
+
+model RolePermission {
+  roleId       String
+  permissionId String
+  role          Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  permission    Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permissionId])
+  @@index([permissionId])
+}
+
+model Warehouse {
+  id        String              @id @default(cuid())
+  code      String              @unique
+  name      String
+  address   Json?
+  isActive  Boolean             @default(true)
+  locations WarehouseLocation[]
+  inboundShipments InboundShipment[]
+  createdAt DateTime            @default(now())
+}
+
+model WarehouseLocation {
+  id           String                 @id @default(cuid())
+  warehouseId  String
+  zone         String
+  aisle        String
+  rack         String
+  shelf        String
+  bin          String
+  barcode      String                 @unique
+  maxWeightKg  Decimal?               @db.Decimal(10, 3)
+  isOccupied   Boolean                @default(false)
+  warehouse    Warehouse              @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  inventory    InventoryLevel[]
+  events       InventoryTransaction[]
+  orderItems   OrderItem[]
+  inboundItems InboundItem[] @relation("InboundItemLocation")
+  orderAllocations OrderAllocation[]
+  returnItems ReturnItem[]
+
+  @@unique([warehouseId, zone, aisle, rack, shelf, bin])
+  @@index([warehouseId, zone])
+}
+
+model Product {
+  id                    String                 @id @default(cuid())
+  merchantId            String
+  sku                   String
+  barcode               String
+  name                  String
+  description           String?
+  declaredValueKes      Int                    @default(0)
+  weightKg              Decimal                @default(0) @db.Decimal(10, 3)
+  reorderThreshold      Int                    @default(0)
+  isFragile             Boolean                @default(false)
+  requiresColdStorage   Boolean                @default(false)
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  merchant              Merchant               @relation(fields: [merchantId], references: [id], onDelete: Restrict)
+  inventory             InventoryLevel[]
+  inventoryEvents       InventoryTransaction[]
+  orderItems            OrderItem[]
+  inboundItems          InboundItem[]
+  allocations           OrderAllocation[]
+  returnItems           ReturnItem[]
+
+  @@unique([merchantId, sku])
+  @@unique([merchantId, barcode])
+  @@index([merchantId, name])
+}
+
+model InboundShipment {
+  id                   String        @id @default(cuid())
+  merchantId           String
+  warehouseId          String
+  asnNumber            String        @unique
+  status               InboundStatus @default(EXPECTED)
+  expectedDeliveryDate DateTime
+  grnNumber            String?       @unique
+  notes                String?
+  createdAt            DateTime      @default(now())
+  updatedAt            DateTime      @updatedAt
+  merchant             Merchant      @relation(fields: [merchantId], references: [id], onDelete: Restrict)
+  warehouse            Warehouse     @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  items                InboundItem[]
+
+  @@index([merchantId, status, expectedDeliveryDate])
+}
+
+model InboundItem {
+  id                 String            @id @default(cuid())
+  inboundShipmentId  String
+  productId          String
+  expectedUnits      Int
+  receivedUnits      Int               @default(0)
+  damagedUnits       Int               @default(0)
+  locationId         String?
+  shipment           InboundShipment   @relation(fields: [inboundShipmentId], references: [id], onDelete: Cascade)
+  product            Product           @relation(fields: [productId], references: [id], onDelete: Restrict)
+  location           WarehouseLocation? @relation("InboundItemLocation", fields: [locationId], references: [id], onDelete: SetNull)
+
+  @@unique([inboundShipmentId, productId])
+  @@index([productId])
+}
+
+model InventoryLevel {
+  id             String           @id @default(cuid())
+  productId      String
+  locationId     String
+  availableQty   Int              @default(0)
+  reservedQty    Int              @default(0)
+  damagedQty     Int              @default(0)
+  quarantineQty  Int              @default(0)
+  updatedAt      DateTime         @updatedAt
+  product        Product          @relation(fields: [productId], references: [id], onDelete: Restrict)
+  location       WarehouseLocation @relation(fields: [locationId], references: [id], onDelete: Restrict)
+
+  @@unique([productId, locationId])
+  @@index([locationId])
+}
+
+model InventoryTransaction {
+  id                   String                  @id @default(cuid())
+  merchantId           String
+  productId            String
+  locationId           String
+  type                 InventoryTransactionType
+  referenceId          String
+  deltaAvailable       Int                     @default(0)
+  deltaReserved        Int                     @default(0)
+  deltaDamaged         Int                     @default(0)
+  deltaQuarantine      Int                     @default(0)
+  performedByUserId    String?
+  supervisorApprovedBy String?
+  reasonCode           String
+  createdAt            DateTime                @default(now())
+  merchant             Merchant                @relation(fields: [merchantId], references: [id], onDelete: Restrict)
+  product              Product                 @relation(fields: [productId], references: [id], onDelete: Restrict)
+  location             WarehouseLocation       @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  performedBy          User?                   @relation("InventoryPerformedBy", fields: [performedByUserId], references: [id], onDelete: SetNull)
+  approvedBy           User?                   @relation("InventoryApprovedBy", fields: [supervisorApprovedBy], references: [id], onDelete: SetNull)
+
+  @@index([merchantId, createdAt])
+  @@index([productId, locationId, createdAt])
+  @@index([referenceId, type])
+}
+
+model Order {
+  id                    String      @id @default(cuid())
+  merchantId            String
+  orderNumber           String      @unique
+  externalReference     String?
+  orderSource           String      @default("MANUAL")
+  customerName          String
+  customerPhone         String
+  customerAltPhone      String?
+  county                String
+  townOrSubCounty       String
+  estateOrArea          String
+  buildingOrCourt       String?
+  landmark              String
+  gpsLatitude           Decimal?    @db.Decimal(10, 7)
+  gpsLongitude          Decimal?    @db.Decimal(10, 7)
+  googleMapsUrl         String?
+  whatsappLocationText  String?
+  orderValueKes         Int
+  deliveryFeeKes        Int
+  codAmountExpectedKes  Int
+  paymentMethod         PaymentMethod
+  status                OrderStatus @default(PENDING_VERIFICATION)
+  verificationNotes     String?
+  verifiedByUserId      String?
+  verifiedAt            DateTime?
+  preferredDeliveryDate DateTime?
+  waybillNumber         String?     @unique
+  manifestId            String?
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+  merchant              Merchant    @relation(fields: [merchantId], references: [id], onDelete: Restrict)
+  items                 OrderItem[]
+  waybill               Waybill?
+  manifest              DispatchManifest? @relation(fields: [manifestId], references: [id], onDelete: SetNull)
+  deliveryAttempts      DeliveryAttempt[]
+  proofOfDelivery       ProofOfDelivery?
+  ndrCases              NDRCase[]
+  codTransactions       CODTransaction[]
+  ledgerEntries         MerchantLedger[]
+  returns               ReturnRecord[]
+  mpesaStkRequests      MpesaStkRequest[]
+
+  @@unique([merchantId, externalReference])
+  @@index([merchantId, status, createdAt])
+  @@index([customerPhone])
+}
+
+model OrderItem {
+  id                  String            @id @default(cuid())
+  orderId             String
+  productId           String
+  quantity            Int
+  unitPriceKes        Int
+  allocatedLocationId String?
+  order               Order             @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product             Product           @relation(fields: [productId], references: [id], onDelete: Restrict)
+  allocatedLocation   WarehouseLocation? @relation(fields: [allocatedLocationId], references: [id], onDelete: SetNull)
+  allocations         OrderAllocation[]
+
+  @@index([productId])
+}
+
+model OrderAllocation {
+  id                  String            @id @default(cuid())
+  orderItemId         String
+  productId           String
+  locationId          String
+  quantity            Int
+  pickedQuantity      Int               @default(0)
+  scannedBarcode      String?
+  pickedAt            DateTime?
+  pickedByUserId      String?
+  orderItem           OrderItem         @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  product             Product           @relation(fields: [productId], references: [id], onDelete: Restrict)
+  location            WarehouseLocation @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  pickedBy            User?             @relation("AllocationPickedBy", fields: [pickedByUserId], references: [id], onDelete: SetNull)
+  pickTasks           PickTask[]
+
+  @@unique([orderItemId, locationId])
+  @@index([locationId, pickedAt])
+}
+
+model PickWave {
+  id                 String         @id @default(cuid())
+  waveNumber         String         @unique
+  status             PickWaveStatus @default(CREATED)
+  assignedToUserId   String?
+  startedAt          DateTime?
+  completedAt        DateTime?
+  createdAt          DateTime       @default(now())
+  assignedTo         User?          @relation("PickWaveAssignee", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  tasks              PickTask[]
+
+  @@index([status, createdAt])
+  @@index([assignedToUserId, status])
+}
+
+model PickTask {
+  id                String          @id @default(cuid())
+  pickWaveId        String
+  orderAllocationId String
+  isConfirmed       Boolean         @default(false)
+  scannedBarcode    String?
+  confirmedAt       DateTime?
+  pickWave          PickWave        @relation(fields: [pickWaveId], references: [id], onDelete: Cascade)
+  orderAllocation   OrderAllocation @relation(fields: [orderAllocationId], references: [id], onDelete: Cascade)
+
+  @@unique([pickWaveId, orderAllocationId])
+  @@index([pickWaveId, isConfirmed])
+  @@index([orderAllocationId])
+}
+
+model DeliveryRoute {
+  id                  String              @id @default(cuid())
+  routeCode           String              @unique
+  name                String
+  subCountiesServed   String[]
+  manifests           DispatchManifest[]
+}
+
+model Rider {
+  id                  String              @id @default(cuid())
+  userId              String              @unique
+  nationalIdNumber    String?
+  vehicleRegPlate     String?
+  phoneNumber         String
+  activeStatus        RiderStatus         @default(OFF_DUTY)
+  currentCashHeldKes  Int                 @default(0)
+  user                User                @relation(fields: [userId], references: [id], onDelete: Restrict)
+  manifests           DispatchManifest[]
+  deliveryAttempts    DeliveryAttempt[]
+  proofsOfDelivery    ProofOfDelivery[]
+  codTransactions     CODTransaction[]
+  shifts              RiderShift[]
+  mpesaStkRequests    MpesaStkRequest[]
+}
+
+model DispatchManifest {
+  id                    String         @id @default(cuid())
+  manifestNumber        String         @unique
+  routeId               String
+  riderId               String
+  status                ManifestStatus @default(STAGED)
+  totalParcels          Int            @default(0)
+  expectedCodTotalKes   Int            @default(0)
+  dispatchedAt          DateTime?
+  closedAt              DateTime?
+  createdAt             DateTime       @default(now())
+  route                 DeliveryRoute  @relation(fields: [routeId], references: [id], onDelete: Restrict)
+  rider                 Rider          @relation(fields: [riderId], references: [id], onDelete: Restrict)
+  orders                Order[]
+  deliveryAttempts      DeliveryAttempt[]
+
+  @@index([riderId, status])
+  @@index([routeId, createdAt])
+}
+
+model Waybill {
+  id                String   @id @default(cuid())
+  orderId           String   @unique
+  trackingNumber    String   @unique
+  barcodeCode128    String
+  qrCodePayload     String
+  labelPdfUrl       String?
+  generatedAt       DateTime @default(now())
+  order             Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+}
+
+model DeliveryAttempt {
+  id                String                 @id @default(cuid())
+  orderId           String
+  manifestId        String
+  riderId           String
+  attemptNumber     Int
+  status            DeliveryAttemptStatus
+  failureReason     DeliveryFailureReason?
+  rescheduleDate    DateTime?
+  riderNotes        String?
+  gpsLatitude       Decimal?               @db.Decimal(10, 7)
+  gpsLongitude      Decimal?               @db.Decimal(10, 7)
+  attemptTimestamp  DateTime               @default(now())
+  order             Order                  @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  manifest          DispatchManifest       @relation(fields: [manifestId], references: [id], onDelete: Restrict)
+  rider             Rider                  @relation(fields: [riderId], references: [id], onDelete: Restrict)
+  ndrCase           NDRCase?
+
+  @@unique([orderId, attemptNumber])
+  @@index([riderId, attemptTimestamp])
+}
+
+model ProofOfDelivery {
+  id                  String   @id @default(cuid())
+  orderId             String   @unique
+  clientSubmissionId  String?  @unique
+  riderId             String
+  recipientName       String
+  signatureImageUrl   String?
+  parcelPhotoUrl      String?
+  gpsLatitude         Decimal? @db.Decimal(10, 7)
+  gpsLongitude        Decimal? @db.Decimal(10, 7)
+  deliveredAt         DateTime @default(now())
+  order               Order    @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  rider               Rider    @relation(fields: [riderId], references: [id], onDelete: Restrict)
+}
+
+model NDRCase {
+  id                  String                 @id @default(cuid())
+  orderId             String
+  deliveryAttemptId   String                 @unique
+  status              NdrStatus              @default(OPEN)
+  assignedAgentId     String?
+  actionTaken         String?
+  resolutionNotes     String?
+  createdAt           DateTime               @default(now())
+  closedAt            DateTime?
+  order               Order                  @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  deliveryAttempt     DeliveryAttempt        @relation(fields: [deliveryAttemptId], references: [id], onDelete: Restrict)
+
+  @@index([status, createdAt])
+}
+
+model ReturnRecord {
+  id           String       @id @default(cuid())
+  returnNumber String       @unique
+  orderId      String
+  merchantId   String
+  returnType   ReturnType
+  status       ReturnStatus @default(RETURN_INITIATED)
+  reason       String
+  notes        String?
+  initiatedAt  DateTime     @default(now())
+  receivedAt   DateTime?
+  inspectedAt  DateTime?
+  order        Order        @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  merchant     Merchant     @relation(fields: [merchantId], references: [id], onDelete: Restrict)
+  items        ReturnItem[]
+
+  @@index([merchantId, status, initiatedAt])
+  @@index([orderId, initiatedAt])
+}
+
+model ReturnItem {
+  id             String             @id @default(cuid())
+  returnId       String
+  productId      String
+  expectedUnits  Int
+  receivedUnits  Int                @default(0)
+  inspectedUnits Int                @default(0)
+  locationId     String?
+  returnRecord   ReturnRecord       @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  product        Product            @relation(fields: [productId], references: [id], onDelete: Restrict)
+  location       WarehouseLocation? @relation(fields: [locationId], references: [id], onDelete: Restrict)
+  inspections    ReturnInspection[]
+
+  @@unique([returnId, productId])
+  @@index([productId])
+}
+
+model ReturnInspection {
+  id                String                 @id @default(cuid())
+  returnItemId      String
+  inspectedByUserId String
+  quantity          Int
+  conditionGrade    ReturnConditionGrade
+  action            ReturnInspectionAction
+  photos            Json?
+  inspectedAt       DateTime               @default(now())
+  returnItem        ReturnItem             @relation(fields: [returnItemId], references: [id], onDelete: Cascade)
+  inspectedBy       User                   @relation(fields: [inspectedByUserId], references: [id], onDelete: Restrict)
+
+  @@index([returnItemId, inspectedAt])
+}
+
+model CODTransaction {
+  id                  String         @id @default(cuid())
+  orderId             String
+  merchantId          String
+  riderId             String?
+  paymentChannel      PaymentChannel
+  amountCollectedKes  Int
+  mpesaReceiptNumber  String?
+  status              CodStatus      @default(PENDING_SETTLEMENT)
+  collectedAt         DateTime       @default(now())
+  order               Order          @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  merchant            Merchant       @relation(fields: [merchantId], references: [id], onDelete: Restrict)
+  rider               Rider?         @relation(fields: [riderId], references: [id], onDelete: Restrict)
+
+  @@index([merchantId, status, collectedAt])
+  @@index([riderId, collectedAt])
+  @@unique([paymentChannel, mpesaReceiptNumber])
+}
+
+model MpesaStkRequest {
+  id                 String                @id @default(cuid())
+  orderId            String
+  merchantId         String
+  riderId            String
+  phoneNumber        String
+  amountKes          Int
+  merchantRequestId  String?
+  checkoutRequestId  String?               @unique
+  status             MpesaStkRequestStatus @default(INITIATED)
+  resultCode         Int?
+  resultDescription  String?
+  mpesaReceiptNumber String?
+  createdAt          DateTime              @default(now())
+  completedAt        DateTime?
+  order              Order                 @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  merchant           Merchant              @relation(fields: [merchantId], references: [id], onDelete: Restrict)
+  rider              Rider                 @relation(fields: [riderId], references: [id], onDelete: Restrict)
+
+  @@index([orderId, status, createdAt])
+}
+
+model RiderShift {
+  id                       String   @id @default(cuid())
+  riderId                  String
+  shiftDate                DateTime @db.Date
+  openingTimestamp         DateTime @default(now())
+  closingTimestamp         DateTime?
+  totalCodExpectedKes      Int      @default(0)
+  mpesaCollectedKes        Int      @default(0)
+  cashExpectedKes          Int      @default(0)
+  cashHandedInKes          Int      @default(0)
+  varianceKes              Int      @default(0)
+  isReconciled             Boolean  @default(false)
+  supervisorApprovedUserId String?
+  varianceReasonNotes      String?
+  rider                    Rider    @relation(fields: [riderId], references: [id], onDelete: Restrict)
+
+  @@unique([riderId, shiftDate])
+  @@index([shiftDate, isReconciled])
+}
+
+model MerchantLedger {
+  id                 String                @id @default(cuid())
+  merchantId         String
+  orderId            String?
+  transactionType    LedgerTransactionType
+  amountKes          Int
+  runningBalanceKes  Int
+  description        String
+  createdAt          DateTime              @default(now())
+  merchant           Merchant              @relation(fields: [merchantId], references: [id], onDelete: Restrict)
+  order              Order?                @relation(fields: [orderId], references: [id], onDelete: Restrict)
+  settlementLinks    SettlementLedgerEntry[]
+
+  @@index([merchantId, createdAt])
+}
+
+model MerchantSettlement {
+  id                   String           @id @default(cuid())
+  merchantId           String
+  settlementNumber     String           @unique
+  periodStart          DateTime
+  periodEnd            DateTime
+  grossCodKes          Int
+  deductedFeesKes      Int
+  netPayoutKes          Int
+  status               SettlementStatus @default(DRAFT)
+  payoutReference      String?
+  approvedByUserId     String?
+  disbursedAt          DateTime?
+  createdAt            DateTime         @default(now())
+  merchant             Merchant         @relation(fields: [merchantId], references: [id], onDelete: Restrict)
+  ledgerEntries        SettlementLedgerEntry[]
+  mpesaB2cPayout       MpesaB2CPayout?
+
+  @@unique([merchantId, periodStart, periodEnd])
+  @@index([merchantId, status, createdAt])
+}
+
+model MpesaB2CPayout {
+  id                       String               @id @default(cuid())
+  settlementId             String               @unique
+  conversationId           String?              @unique
+  originatorConversationId String?              @unique
+  status                   MpesaB2CPayoutStatus @default(INITIATED)
+  resultCode               Int?
+  resultDescription        String?
+  payoutReference          String?
+  createdAt                DateTime             @default(now())
+  completedAt              DateTime?
+  settlement               MerchantSettlement  @relation(fields: [settlementId], references: [id], onDelete: Restrict)
+}
+
+model SettlementLedgerEntry {
+  id            String            @id @default(cuid())
+  settlementId  String
+  ledgerEntryId String            @unique
+  settlement    MerchantSettlement @relation(fields: [settlementId], references: [id], onDelete: Cascade)
+  ledgerEntry   MerchantLedger    @relation(fields: [ledgerEntryId], references: [id], onDelete: Restrict)
+
+  @@index([settlementId])
+}
+
+model AuditLog {
+  id              String   @id @default(cuid())
+  userId          String?
+  merchantId      String?
+  entityType      String
+  entityId        String
+  action          String
+  beforePayload   Json?
+  afterPayload    Json?
+  ipAddress       String?
+  userAgent       String?
+  createdAt       DateTime @default(now())
+  user            User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  merchant        Merchant? @relation(fields: [merchantId], references: [id], onDelete: SetNull)
+
+  @@index([merchantId, entityType, entityId, createdAt])
+  @@index([userId, createdAt])
+}
+
+model AuthSession {
+  id        String    @id @default(cuid())
+  userId    String
+  tokenHash String    @unique
+  createdAt DateTime  @default(now())
+  expiresAt DateTime
+  revokedAt DateTime?
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, expiresAt])
+}

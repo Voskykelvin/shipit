@@ -1,557 +1,464 @@
-import React, { useState } from 'react';
-import {
-  Package,
-  ShoppingBag,
-  DollarSign,
-  TrendingUp,
-  Plus,
-  Truck,
-  CheckCircle,
-  FileText,
-  AlertCircle,
-  Building,
-} from 'lucide-react';
+import { useCallback, useEffect, useState } from 'react';
+import { api, type AuthSession } from '@shipit/api-client';
+import type { InventoryStockSummary, MerchantLedgerEntry, MerchantSettlement, Order } from '@shipit/shared-types';
+import { Banknote, Box, FileUp, LogOut, Package, Plus, RefreshCw, Search, ShoppingBag, TrendingUp } from 'lucide-react';
+
+type Tab = 'overview' | 'orders' | 'inventory' | 'finance' | 'tracking';
+
+interface Product {
+  id: string;
+  sku: string;
+  name: string;
+  declaredValueKes: number;
+}
+
+interface Warehouse {
+  id: string;
+  code: string;
+  name: string;
+}
+
+interface InboundShipment {
+  id: string;
+  asnNumber: string;
+  status: string;
+  expectedDeliveryDate: string;
+  items: Array<{ id: string; productId: string; expectedUnits: number; receivedUnits: number }>;
+}
+
+interface TrackingInfo {
+  trackingNumber: string;
+  orderNumber: string;
+  status: string;
+  destination: { county: string; townOrSubCounty: string };
+  timeline: Array<{ status: string; occurredAt: string; detail?: string }>;
+}
+
+interface MerchantData {
+  orders: Order[];
+  stock: InventoryStockSummary[];
+  products: Product[];
+  warehouses: Warehouse[];
+  inbound: InboundShipment[];
+  ledgers: MerchantLedgerEntry[];
+  settlements: MerchantSettlement[];
+}
+
+const emptyData: MerchantData = {
+  orders: [], stock: [], products: [], warehouses: [], inbound: [], ledgers: [], settlements: [],
+};
+
+const kes = (amount: number) => `KES ${amount.toLocaleString()}`;
+const dateToday = () => new Date().toISOString().slice(0, 10);
 
 export default function App() {
-  const [activeTab, setActiveTab] = useState<'overview' | 'inventory' | 'orders' | 'finances'>('overview');
-  const [showOrderModal, setShowOrderModal] = useState(false);
+  const [session, setSession] = useState<AuthSession | null>(api.session);
+  const [data, setData] = useState<MerchantData>(emptyData);
+  const [activeTab, setActiveTab] = useState<Tab>('overview');
+  const [busy, setBusy] = useState(false);
+  const [message, setMessage] = useState('');
+  const [messageType, setMessageType] = useState<'success' | 'error'>('success');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [searchText, setSearchText] = useState('');
+  const [trackingNumber, setTrackingNumber] = useState('');
+  const [tracking, setTracking] = useState<TrackingInfo | null>(null);
+  const [selectedProductId, setSelectedProductId] = useState('');
+  const [unitPriceKes, setUnitPriceKes] = useState<number | ''>('');
+  const [selectedWarehouseId, setSelectedWarehouseId] = useState('');
 
-  // Form State
-  const [customerName, setCustomerName] = useState('');
-  const [customerPhone, setCustomerPhone] = useState('');
-  const [county, setCounty] = useState('Nairobi');
-  const [town, setTown] = useState('Westlands');
-  const [estate, setEstate] = useState('');
-  const [landmark, setLandmark] = useState('');
-  const [productSelection, setProductSelection] = useState('prod-001');
-  const [quantity, setQuantity] = useState(1);
+  const loadData = useCallback(async () => {
+    setBusy(true);
+    try {
+      const [orders, stock, products, warehouses, inbound, ledgers, settlements] = await Promise.all([
+        api.request<Order[]>('/orders'),
+        api.request<InventoryStockSummary[]>('/inventory/stock'),
+        api.request<Product[]>('/products'),
+        api.request<Warehouse[]>('/inbound/warehouses'),
+        api.request<InboundShipment[]>('/inbound'),
+        api.request<MerchantLedgerEntry[]>('/finance/ledgers'),
+        api.request<MerchantSettlement[]>('/finance/settlements'),
+      ]);
+      setData({ orders, stock, products, warehouses, inbound, ledgers, settlements });
+      setSelectedProductId((current) => current || products[0]?.id || '');
+      setSelectedWarehouseId((current) => current || warehouses[0]?.id || '');
+      setMessage('');
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : 'Could not load merchant data.');
+      setMessageType('error');
+    } finally {
+      setBusy(false);
+    }
+  }, []);
 
-  // Orders State
-  const [orders, setOrders] = useState([
-    {
-      id: 'ord-1001',
-      orderNumber: 'ORD-90412',
-      customerName: 'Jane Wambui',
-      phone: '+254 712 345 678',
-      area: 'Westlands, Rhapta Road',
-      items: '1x Glow Radiance Serum, 1x Hydrating Cream',
-      cod: 'KES 5,250',
-      status: 'Ready for Pick',
-      tracking: 'WB-90412-KE',
-    },
-    {
-      id: 'ord-1002',
-      orderNumber: 'ORD-90413',
-      customerName: 'Brian Kiprop',
-      phone: '+254 714 889 900',
-      area: 'Kilimani, Dennis Pritt Rd',
-      items: '1x Glow Radiance Serum 50ml',
-      cod: 'KES 3,050',
-      status: 'Verifying Phone',
-      tracking: 'Pending',
-    },
-    {
-      id: 'ord-1005',
-      orderNumber: 'ORD-90410',
-      customerName: 'Diana Chebet',
-      phone: '+254 722 880 011',
-      area: 'Kilimani, Argwings Kodhek',
-      items: '2x Hydrating Day Cream SPF 30',
-      cod: 'KES 4,650',
-      status: 'Customer Unreachable (NDR)',
-      tracking: 'WB-90410-KE',
-    },
-  ]);
+  useEffect(() => {
+    if (session) void loadData();
+  }, [session, loadData]);
 
-  const handleCreateOrder = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!customerName || !customerPhone || !landmark) {
-      alert('Please fill out customer name, phone, and delivery landmark.');
+  useEffect(() => {
+    const selectedProduct = data.products.find((product) => product.id === selectedProductId);
+    if (selectedProduct && unitPriceKes === '') setUnitPriceKes(selectedProduct.declaredValueKes);
+  }, [data.products, selectedProductId, unitPriceKes]);
+
+  async function handleLogin(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true);
+    setMessage('');
+    try {
+      const result = await api.login(email, password);
+      if (!result.user.merchantId) {
+        await api.logout();
+        throw new Error('This portal requires a merchant account.');
+      }
+      setSession(result);
+      setPassword('');
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : 'Sign-in failed.');
+      setMessageType('error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function runAction(action: () => Promise<unknown>, success: string | ((result: unknown) => string)) {
+    setBusy(true);
+    setMessage('');
+    try {
+      const result = await action();
+      await loadData();
+      setMessage(typeof success === 'function' ? success(result) : success);
+      setMessageType('success');
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : 'The operation could not be completed.');
+      setMessageType('error');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function createOrder(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!session?.user.merchantId) return;
+    const formElement = event.currentTarget;
+    const form = new FormData(event.currentTarget);
+    const productId = String(form.get('productId'));
+    const product = data.products.find((item) => item.id === productId);
+    if (!product) {
+      setMessage('Choose an active product before creating an order.');
+      setMessageType('error');
       return;
     }
+    await runAction(async () => {
+      await api.request<Order>('/orders', {
+        method: 'POST',
+        body: {
+          merchantId: session.user.merchantId,
+          customerName: String(form.get('customerName')),
+          customerPhone: String(form.get('customerPhone')),
+          address: {
+            county: String(form.get('county')),
+            townOrSubCounty: String(form.get('townOrSubCounty')),
+            estateOrArea: String(form.get('estateOrArea')),
+            buildingOrCourt: String(form.get('buildingOrCourt') || ''),
+            landmark: String(form.get('landmark')),
+            googleMapsUrl: String(form.get('googleMapsUrl') || ''),
+          },
+          items: [{
+            productId,
+            quantity: Number(form.get('quantity')),
+            unitPriceKes: Number(form.get('unitPriceKes') || product.declaredValueKes),
+          }],
+          deliveryFeeKes: Number(form.get('deliveryFeeKes') || 250),
+          paymentMethod: String(form.get('paymentMethod')),
+          codAmountExpectedKes: 0,
+        },
+      });
+      formElement.reset();
+    }, 'Order created. COD orders are now in the verification queue.');
+  }
 
-    const newOrd = {
-      id: `ord-${Date.now()}`,
-      orderNumber: `ORD-${Math.floor(10000 + Math.random() * 90000)}`,
-      customerName,
-      phone: customerPhone,
-      area: `${town}, ${estate}`,
-      items: `${quantity}x Glow Radiance Vitamin C Serum`,
-      cod: `KES ${(quantity * 2800 + 250).toLocaleString()}`,
-      status: 'Ready for Pick',
-      tracking: `WB-${Math.floor(10000 + Math.random() * 90000)}-KE`,
-    };
+  async function createInbound(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!session?.user.merchantId) return;
+    const formElement = event.currentTarget;
+    const form = new FormData(event.currentTarget);
+    const productId = String(form.get('productId'));
+    const warehouseId = String(form.get('warehouseId'));
+    if (!warehouseId || !productId) {
+      setMessage('Select a storage location and product to schedule an inbound shipment.');
+      setMessageType('error');
+      return;
+    }
+    await runAction(async () => {
+      await api.request('/inbound', {
+        method: 'POST',
+        body: {
+          merchantId: session.user.merchantId,
+          warehouseId,
+          expectedDeliveryDate: String(form.get('expectedDeliveryDate')),
+          notes: String(form.get('notes') || ''),
+          items: [{ productId, expectedUnits: Number(form.get('expectedUnits')) }],
+        },
+      });
+      formElement.reset();
+    }, 'Inbound shipment advice created.');
+  }
 
-    setOrders([newOrd, ...orders]);
-    setShowOrderModal(false);
-    setCustomerName('');
-    setCustomerPhone('');
-    setEstate('');
-    setLandmark('');
-    alert(`Order ${newOrd.orderNumber} placed and synced to Ship It Fulfillment Warehouse!`);
-  };
+  async function importCsv(file?: File) {
+    if (!file) return;
+    await runAction(async () => {
+      const result = await api.requestText<{ importedCount: number }>('/orders/import', await file.text());
+      return result.importedCount;
+    }, (result) => `Imported ${String(result)} orders successfully.`);
+  }
+
+  async function createSettlement(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!session?.user.merchantId) return;
+    const formElement = event.currentTarget;
+    const form = new FormData(event.currentTarget);
+    await runAction(async () => {
+      await api.request('/finance/settlements', {
+        method: 'POST',
+        body: {
+          merchantId: session.user.merchantId,
+          periodStart: String(form.get('periodStart')),
+          periodEnd: String(form.get('periodEnd')),
+        },
+      });
+      formElement.reset();
+    }, 'Settlement request created from eligible reconciled ledger entries.');
+  }
+
+  async function trackOrder(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setTracking(null);
+    setMessage('');
+    try {
+      const result = await api.publicRequest<TrackingInfo>(`/tracking/${encodeURIComponent(trackingNumber.trim())}`);
+      setTracking(result);
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : 'Tracking lookup failed.');
+      setMessageType('error');
+    }
+  }
+
+  async function signOut() {
+    try {
+      await api.logout();
+    } catch (cause) {
+      setMessage(cause instanceof Error ? cause.message : 'Could not sign out cleanly.');
+      setMessageType('error');
+    } finally {
+      setSession(null);
+      setData(emptyData);
+    }
+  }
+
+  if (!session) {
+    return (
+      <main className="merchant-auth">
+        <form className="merchant-auth-card" onSubmit={handleLogin}>
+          <div className="m-badge">S</div>
+          <p className="eyebrow">SHIP IT · MERCHANT PORTAL</p>
+          <h1>Sign in to your account</h1>
+          <p>View fulfillment, inventory and COD settlement activity for your business.</p>
+          {message && <div className="notice error">{message}</div>}
+          <label>Email address<input type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
+          <label>Password<input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
+          <button className="btn-emerald" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button>
+        </form>
+      </main>
+    );
+  }
+
+  const filteredOrders = data.orders.filter((order) =>
+    `${order.orderNumber} ${order.customerName} ${order.customerPhone} ${order.waybillNumber ?? ''}`
+      .toLowerCase().includes(searchText.toLowerCase()),
+  );
+  const stockUnits = data.stock.reduce((sum, item) => sum + item.availableQty, 0);
+  const openOrders = data.orders.filter((order) => !['DELIVERED', 'CANCELLED', 'RETURNED_TO_WAREHOUSE'].includes(order.status)).length;
+  const balance = data.ledgers.reduce((sum, entry) => sum + entry.amountKes, 0);
+  const products = data.products;
 
   return (
     <div className="merchant-app">
-      {/* Sidebar */}
       <aside className="merchant-sidebar">
-        <div className="merchant-logo">
-          <div className="m-badge">BG</div>
-          <div>
-            <h3 style={{ fontSize: '1rem', fontWeight: 700 }}>BeautyGlow</h3>
-            <span style={{ fontSize: '0.7rem', color: 'var(--text-faint)' }}>Merchant ID: #m-001</span>
-          </div>
-        </div>
-
-        <ul className="m-links">
-          <li>
-            <button
-              className={`m-btn ${activeTab === 'overview' ? 'active' : ''}`}
-              onClick={() => setActiveTab('overview')}
-            >
-              <TrendingUp size={18} />
-              Overview
-            </button>
-          </li>
-          <li>
-            <button
-              className={`m-btn ${activeTab === 'inventory' ? 'active' : ''}`}
-              onClick={() => setActiveTab('inventory')}
-            >
-              <Package size={18} />
-              Inventory & ASN
-            </button>
-          </li>
-          <li>
-            <button
-              className={`m-btn ${activeTab === 'orders' ? 'active' : ''}`}
-              onClick={() => setActiveTab('orders')}
-            >
-              <ShoppingBag size={18} />
-              Orders & Waybills
-            </button>
-          </li>
-          <li>
-            <button
-              className={`m-btn ${activeTab === 'finances' ? 'active' : ''}`}
-              onClick={() => setActiveTab('finances')}
-            >
-              <DollarSign size={18} />
-              COD & Settlements
-            </button>
-          </li>
-        </ul>
-
-        <div style={{ padding: '1.25rem', borderTop: '1px solid var(--border-subtle)' }}>
-          <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Warehouse Hub:</div>
-          <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#34d399' }}>Nairobi Industrial Area</div>
-        </div>
+        <div className="merchant-logo"><div className="m-badge">{session.user.firstName.slice(0, 1)}{session.user.lastName.slice(0, 1)}</div><div><h3>{session.user.firstName} {session.user.lastName}</h3><span>Merchant account</span></div></div>
+        <nav className="m-links">
+          {([
+            ['overview', 'Overview', <TrendingUp size={18} />],
+            ['orders', 'Orders & waybills', <ShoppingBag size={18} />],
+            ['inventory', 'Inventory & inbound', <Package size={18} />],
+            ['finance', 'Ledger & settlements', <Banknote size={18} />],
+            ['tracking', 'Public tracking', <Search size={18} />],
+          ] as const).map(([key, label, icon]) => (
+            <button key={key} className={`m-btn ${activeTab === key ? 'active' : ''}`} onClick={() => setActiveTab(key)}>{icon}{label}</button>
+          ))}
+        </nav>
+        <div className="sidebar-account"><span>{session.user.email}</span><button className="m-btn" onClick={() => void signOut()}><LogOut size={16} /> Sign out</button></div>
       </aside>
 
-      {/* Main Body */}
       <div className="m-main">
         <header className="m-header">
-          <div>
-            <h2 style={{ fontSize: '1.15rem', fontWeight: 700 }}>Merchant Self-Service Control Center</h2>
-          </div>
-          <div>
-            <button className="btn-emerald" onClick={() => setShowOrderModal(true)}>
-              <Plus size={16} style={{ display: 'inline', marginRight: 4 }} />
-              + Create New Order
-            </button>
-          </div>
+          <div><h1>{activeTab === 'overview' ? 'Merchant overview' : activeTab === 'orders' ? 'Orders & waybills' : activeTab === 'inventory' ? 'Inventory & inbound shipments' : activeTab === 'finance' ? 'Ledger & settlements' : 'Shipment tracking'}</h1><span>Ship It Fulfillment</span></div>
+          <div className="header-actions"><button className="icon-button" onClick={() => void loadData()} disabled={busy} title="Refresh data"><RefreshCw size={16} /></button><button className="btn-emerald" onClick={() => setActiveTab('orders')}><Plus size={15} /> Create order</button></div>
         </header>
-
+        {message && <div className={`notice ${messageType}`} role="status">{message}<button onClick={() => setMessage('')}>Dismiss</button></div>}
         <main className="m-content">
-          {/* TAB: OVERVIEW */}
           {activeTab === 'overview' && (
             <>
+              <div className="welcome-row"><div><p className="eyebrow">YOUR FULFILLMENT SNAPSHOT</p><h2>Welcome, {session.user.firstName}</h2><p>Live figures from your orders, inventory and merchant ledger.</p></div><span className="live-chip">{busy ? 'SYNCING' : 'LIVE DATA'}</span></div>
               <div className="grid-4">
-                <div className="card">
-                  <span className="metric-title">Available Stock</span>
-                  <div className="metric-val" style={{ color: '#34d399' }}>237 Units</div>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-faint)' }}>Stored in Ship It WH-01</span>
-                </div>
-                <div className="card">
-                  <span className="metric-title">Active Orders Today</span>
-                  <div className="metric-val">34 Orders</div>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-faint)' }}>12 in picking, 22 in transit</span>
-                </div>
-                <div className="card">
-                  <span className="metric-title">Pending COD Balance</span>
-                  <div className="metric-val">KES 184,500</div>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-faint)' }}>Clearing into merchant ledger</span>
-                </div>
-                <div className="card">
-                  <span className="metric-title">Next Scheduled Payout</span>
-                  <div className="metric-val" style={{ color: '#60a5fa' }}>Friday (Oct 10)</div>
-                  <span style={{ fontSize: '0.75rem', color: 'var(--text-faint)' }}>Disbursement via M-Pesa B2C</span>
-                </div>
+                <Metric icon={<Box />} label="Available stock" value={`${stockUnits.toLocaleString()} units`} detail={`${data.stock.length} product SKUs`} />
+                <Metric icon={<ShoppingBag />} label="Open orders" value={openOrders.toLocaleString()} detail={`${data.orders.length} total orders`} />
+                <Metric icon={<Banknote />} label="Ledger balance" value={kes(balance)} detail="Net posted transactions" />
+                <Metric icon={<Package />} label="Inbound shipments" value={data.inbound.filter((item) => !['COMPLETED', 'CANCELLED'].includes(item.status)).length.toString()} detail={`${data.inbound.length} total ASNs`} />
               </div>
-
-              {/* Recent Orders table */}
-              <div className="m-table-card">
-                <div className="m-table-header">
-                  <span style={{ fontWeight: 700 }}>Live Dispatch & Fulfillment Feed</span>
-                  <span className="code-pill">SYNCED</span>
-                </div>
-                <table className="m-table">
-                  <thead>
-                    <tr>
-                      <th>Order #</th>
-                      <th>Customer</th>
-                      <th>Destination</th>
-                      <th>Items</th>
-                      <th>COD Expected</th>
-                      <th>Status</th>
-                      <th>Waybill</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {orders.map((o) => (
-                      <tr key={o.id}>
-                        <td><span className="code-pill">{o.orderNumber}</span></td>
-                        <td><strong>{o.customerName}</strong><br /><small style={{ color: 'var(--text-muted)' }}>{o.phone}</small></td>
-                        <td>{o.area}</td>
-                        <td>{o.items}</td>
-                        <td><strong>{o.cod}</strong></td>
-                        <td>
-                          {o.status.includes('Ready') && <span style={{ color: '#34d399' }}>✓ {o.status}</span>}
-                          {o.status.includes('Verifying') && <span style={{ color: '#f59e0b' }}>⏳ {o.status}</span>}
-                          {o.status.includes('Unreachable') && <span style={{ color: '#ef4444' }}>⚠ {o.status}</span>}
-                        </td>
-                        <td><span className="code-pill">{o.tracking}</span></td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <Panel title="Latest orders" action={<button className="text-button" onClick={() => setActiveTab('orders')}>View all</button>}>
+                <OrderTable orders={data.orders.slice(0, 6)} onLabel={async (number) => {
+                  try {
+                    const blob = await api.download(`/waybills/${encodeURIComponent(number)}/label.pdf`);
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = `${number}.pdf`;
+                    link.click();
+                    URL.revokeObjectURL(url);
+                  } catch (cause) { setMessage(cause instanceof Error ? cause.message : 'Could not download waybill.'); setMessageType('error'); }
+                }} />
+              </Panel>
             </>
           )}
 
-          {/* TAB: INVENTORY */}
-          {activeTab === 'inventory' && (
-            <div className="m-table-card">
-              <div className="m-table-header">
-                <div>
-                  <h3 style={{ fontSize: '1rem', fontWeight: 700 }}>Real-Time Physical Stock Breakdown</h3>
-                  <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                    Audited inventory ledger from Ship It Warehouse Bins.
-                  </p>
-                </div>
-                <button className="btn-emerald" onClick={() => alert('ASN Inbound form opened!')}>
-                  + Schedule Stock Inbound (ASN)
-                </button>
-              </div>
-              <table className="m-table">
-                <thead>
-                  <tr>
-                    <th>SKU Code</th>
-                    <th>Product Name</th>
-                    <th>Available</th>
-                    <th>Reserved</th>
-                    <th>Damaged</th>
-                    <th>Total In Warehouse</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td><span className="code-pill">BG-SERUM-50ML</span></td>
-                    <td><strong>Glow Radiance Vitamin C Serum 50ml</strong></td>
-                    <td><span style={{ color: '#34d399', fontWeight: 700 }}>142</span></td>
-                    <td>18</td>
-                    <td>3</td>
-                    <td>163</td>
-                    <td><span style={{ color: '#34d399' }}>In Stock</span></td>
-                  </tr>
-                  <tr>
-                    <td><span className="code-pill">BG-CREAM-100ML</span></td>
-                    <td><strong>Hydrating Day Cream SPF 30 100ml</strong></td>
-                    <td><span style={{ color: '#34d399', fontWeight: 700 }}>95</span></td>
-                    <td>12</td>
-                    <td>1</td>
-                    <td>108</td>
-                    <td><span style={{ color: '#34d399' }}>In Stock</span></td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {/* TAB: ORDERS */}
           {activeTab === 'orders' && (
-            <div className="m-table-card">
-              <div className="m-table-header">
-                <span style={{ fontWeight: 700 }}>All Merchant Orders</span>
-                <button className="btn-emerald" onClick={() => setShowOrderModal(true)}>
-                  + New Order
-                </button>
+            <>
+              <div className="split-grid">
+                <Panel title="Create a delivery order" subtitle="COD orders are held for verification before inventory is reserved.">
+                  {products.length === 0 ? <EmptyState>No active products are available to order. Ask your account manager to add products.</EmptyState> : (
+                    <form className="portal-form" onSubmit={(event) => void createOrder(event)}>
+                      <div className="form-grid">
+                        <label>Customer name<input name="customerName" required minLength={2} /></label>
+                        <label>Phone number<input name="customerPhone" type="tel" placeholder="0712345678" required /></label>
+                        <label>County<input name="county" defaultValue="Nairobi" required /></label>
+                        <label>Town / sub-county<input name="townOrSubCounty" required /></label>
+                        <label>Estate / area<input name="estateOrArea" required /></label>
+                        <label>Building / court<input name="buildingOrCourt" /></label>
+                        <label className="field-wide">Delivery landmark<input name="landmark" required minLength={3} placeholder="Specific directions the rider can follow" /></label>
+                        <label className="field-wide">Google Maps URL<input name="googleMapsUrl" type="url" /></label>
+                        <label>Product<select name="productId" value={selectedProductId} onChange={(event) => {
+                          const productId = event.target.value;
+                          setSelectedProductId(productId);
+                          setUnitPriceKes(data.products.find((product) => product.id === productId)?.declaredValueKes ?? '');
+                        }} required>{products.map((product) => <option key={product.id} value={product.id}>{product.sku} · {product.name}</option>)}</select></label>
+                        <label>Quantity<input name="quantity" type="number" min="1" defaultValue="1" required /></label>
+                        <label>Unit price (KES)<input name="unitPriceKes" type="number" min="0" value={unitPriceKes} onChange={(event) => setUnitPriceKes(event.target.value === '' ? '' : Number(event.target.value))} required /></label>
+                        <label>Delivery fee (KES)<input name="deliveryFeeKes" type="number" min="0" defaultValue="250" required /></label>
+                        <label>Payment method<select name="paymentMethod"><option value="COD_MPESA">Cash on delivery · M-Pesa</option><option value="COD_CASH">Cash on delivery · cash</option><option value="PREPAID">Prepaid</option></select></label>
+                      </div>
+                      <button className="btn-emerald" disabled={busy}><Plus size={15} /> Submit order</button>
+                    </form>
+                  )}
+                </Panel>
+                <Panel title="Bulk import orders" subtitle="Upload the CSV template accepted by the Ship It API.">
+                  <p className="helper-copy">Each order row needs merchant_id, address fields, product_sku, quantity, unit_price_kes and payment_method. Group multiple product rows with the same external_reference.</p>
+                  <label className="upload-button"><FileUp size={18} /> Choose CSV file<input type="file" accept=".csv,text/csv" onChange={(event) => void importCsv(event.target.files?.[0])} /></label>
+                </Panel>
               </div>
-              <table className="m-table">
-                <thead>
-                  <tr>
-                    <th>Order #</th>
-                    <th>Customer Name</th>
-                    <th>Phone</th>
-                    <th>Area</th>
-                    <th>Items</th>
-                    <th>COD Value</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {orders.map((o) => (
-                    <tr key={o.id}>
-                      <td><span className="code-pill">{o.orderNumber}</span></td>
-                      <td>{o.customerName}</td>
-                      <td>{o.phone}</td>
-                      <td>{o.area}</td>
-                      <td>{o.items}</td>
-                      <td><strong>{o.cod}</strong></td>
-                      <td>{o.status}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+              <Panel title="Your orders" action={<div className="search-field"><Search size={15} /><input aria-label="Search orders" placeholder="Order, customer or waybill" value={searchText} onChange={(event) => setSearchText(event.target.value)} /></div>}>
+                <OrderTable orders={filteredOrders} onLabel={async (number) => {
+                  try {
+                    const blob = await api.download(`/waybills/${encodeURIComponent(number)}/label.pdf`);
+                    const url = URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.download = `${number}.pdf`;
+                    link.click();
+                    URL.revokeObjectURL(url);
+                  } catch (cause) { setMessage(cause instanceof Error ? cause.message : 'Could not download waybill.'); setMessageType('error'); }
+                }} />
+              </Panel>
+            </>
           )}
 
-          {/* TAB: FINANCES */}
-          {activeTab === 'finances' && (
-            <div className="m-table-card">
-              <div className="m-table-header">
-                <div>
-                  <h3 style={{ fontSize: '1rem', fontWeight: 700 }}>Financial Ledger & Settlement History</h3>
-                  <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                    COD collected minus transparent fulfillment and delivery rate card deductions.
-                  </p>
-                </div>
-                <button className="btn-emerald" onClick={() => alert('Payout request sent to Ship It finance!')}>
-                  Request Immediate Payout
-                </button>
+          {activeTab === 'inventory' && (
+            <>
+              <div className="split-grid">
+                <Panel title="Schedule inbound stock" subtitle="Create an ASN for stock expected at the warehouse.">
+                  {products.length === 0 ? <EmptyState>Add a product before creating an inbound shipment.</EmptyState> : (
+                    <form className="portal-form" onSubmit={(event) => void createInbound(event)}>
+                      <label>Product<select name="productId" required>{products.map((product) => <option key={product.id} value={product.id}>{product.sku} · {product.name}</option>)}</select></label>
+                      <label>Expected units<input name="expectedUnits" type="number" min="1" required /></label>
+                      <label>Expected delivery date<input name="expectedDeliveryDate" type="date" min={dateToday()} required /></label>
+                      <label>Notes<input name="notes" /></label>
+                      <label>Warehouse<select name="warehouseId" value={selectedWarehouseId} onChange={(event) => setSelectedWarehouseId(event.target.value)} required>{data.warehouses.map((warehouse) => <option key={warehouse.id} value={warehouse.id}>{warehouse.name} · {warehouse.code}</option>)}</select></label>
+                      <button className="btn-emerald" disabled={busy}>Create ASN</button>
+                    </form>
+                  )}
+                </Panel>
+                <Panel title="Scheduled ASNs" subtitle="Warehouse staff will confirm received quantities and any damage.">
+                  {data.inbound.length === 0 ? <EmptyState>No inbound shipments have been scheduled.</EmptyState> : data.inbound.map((asn) => (
+                    <div className="asn-row" key={asn.id}><div><strong>{asn.asnNumber}</strong><span>{new Date(asn.expectedDeliveryDate).toLocaleDateString()} · {asn.items.length} items</span></div><Status value={asn.status} /></div>
+                  ))}
+                </Panel>
               </div>
-              <table className="m-table">
-                <thead>
-                  <tr>
-                    <th>Settlement #</th>
-                    <th>Gross COD Collected</th>
-                    <th>Fulfillment & Delivery Fees</th>
-                    <th>Net Payout Disbursed</th>
-                    <th>Payment Channel</th>
-                    <th>Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td><span className="code-pill">SET-2026-0089</span></td>
-                    <td>KES 210,000</td>
-                    <td>-KES 18,500</td>
-                    <td><strong style={{ color: '#34d399' }}>KES 191,500</strong></td>
-                    <td>M-Pesa B2C (KB89102X)</td>
-                    <td><span style={{ color: '#34d399' }}>✓ Paid</span></td>
-                  </tr>
-                  <tr>
-                    <td><span className="code-pill">SET-2026-0094</span></td>
-                    <td>KES 184,500</td>
-                    <td>-KES 16,200</td>
-                    <td><strong style={{ color: '#60a5fa' }}>KES 168,300</strong></td>
-                    <td>Pending Friday Cycle</td>
-                    <td><span style={{ color: '#f59e0b' }}>Processing</span></td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
+              <Panel title="Current stock" subtitle="Stock quantities are read from the inventory ledger.">
+                <div className="table-scroll"><table className="m-table"><thead><tr><th>SKU</th><th>Product</th><th>Available</th><th>Reserved</th><th>Damaged</th><th>Quarantine</th><th>Total physical</th></tr></thead><tbody>{data.stock.map((item) => <tr key={item.productId}><td><code className="code-pill">{item.sku}</code></td><td>{item.productName}</td><td>{item.availableQty}</td><td>{item.reservedQty}</td><td>{item.damagedQty}</td><td>{item.quarantineQty}</td><td>{item.totalPhysicalQty}</td></tr>)}</tbody></table></div>
+              </Panel>
+            </>
+          )}
+
+          {activeTab === 'finance' && (
+            <>
+              <Panel title="Request a merchant settlement" subtitle="A settlement includes eligible reconciled ledger entries within this date range.">
+                <form className="portal-form inline-form" onSubmit={(event) => void createSettlement(event)}>
+                  <label>Period start<input name="periodStart" type="date" required /></label><label>Period end<input name="periodEnd" type="date" required /></label><button className="btn-emerald" disabled={busy}>Request settlement</button>
+                </form>
+              </Panel>
+              <Panel title="Settlement history">
+                <div className="table-scroll"><table className="m-table"><thead><tr><th>Settlement</th><th>Created</th><th>Gross COD</th><th>Fees</th><th>Net payout</th><th>Status</th><th>Reference</th></tr></thead><tbody>{data.settlements.map((settlement) => <tr key={settlement.id}><td><code className="code-pill">{settlement.settlementNumber}</code></td><td>{new Date(settlement.createdAt).toLocaleDateString()}</td><td>{kes(settlement.grossCodCollectedKes)}</td><td>{kes(settlement.totalFeesDeductedKes)}</td><td><strong>{kes(settlement.netPayoutKes)}</strong></td><td><Status value={settlement.status} /></td><td>{settlement.payoutReference ?? '—'}</td></tr>)}</tbody></table></div>
+              </Panel>
+              <Panel title="Merchant ledger" subtitle="Append-only transactions for COD credits, fees, returns and settlement payouts.">
+                <div className="table-scroll"><table className="m-table"><thead><tr><th>Date</th><th>Type</th><th>Description</th><th>Order</th><th>Amount</th><th>Balance</th></tr></thead><tbody>{data.ledgers.map((entry) => <tr key={entry.id}><td>{new Date(entry.createdAt).toLocaleString()}</td><td>{entry.type}</td><td>{entry.description}</td><td>{entry.orderId ?? '—'}</td><td className={entry.amountKes >= 0 ? 'amount-positive' : 'amount-negative'}>{kes(entry.amountKes)}</td><td>{kes(entry.runningBalanceKes)}</td></tr>)}</tbody></table></div>
+              </Panel>
+            </>
+          )}
+
+          {activeTab === 'tracking' && (
+            <Panel title="Track a parcel" subtitle="Public tracking lookup; no sign-in required.">
+              <form className="portal-form inline-form" onSubmit={(event) => void trackOrder(event)}>
+                <label>Waybill number<input value={trackingNumber} onChange={(event) => setTrackingNumber(event.target.value)} placeholder="WB-2026-…" required /></label><button className="btn-emerald"><Search size={15} /> Track</button>
+              </form>
+              {tracking && <div className="tracking-result"><div className="tracking-summary"><div><span>Waybill</span><strong>{tracking.trackingNumber}</strong></div><div><span>Order status</span><Status value={tracking.status} /></div><div><span>Destination</span><strong>{tracking.destination.townOrSubCounty}, {tracking.destination.county}</strong></div></div><ol className="timeline">{tracking.timeline.map((event, index) => <li key={`${event.status}-${event.occurredAt}-${index}`}><span className="timeline-dot" /><div><strong>{event.status.replaceAll('_', ' ')}</strong>{event.detail && <p>{event.detail}</p>}<time>{new Date(event.occurredAt).toLocaleString()}</time></div></li>)}</ol></div>}
+            </Panel>
           )}
         </main>
       </div>
-
-      {/* CREATE ORDER MODAL */}
-      {showOrderModal && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0,0,0,0.7)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            zIndex: 100,
-          }}
-        >
-          <div
-            style={{
-              background: 'var(--bg-surface)',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: 'var(--radius-lg)',
-              width: '540px',
-              maxWidth: '90vw',
-              padding: '1.75rem',
-            }}
-          >
-            <h3 style={{ fontSize: '1.15rem', fontWeight: 700, marginBottom: '1rem' }}>
-              Create Customer Order
-            </h3>
-
-            <form onSubmit={handleCreateOrder} style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-              <div>
-                <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Customer Full Name</label>
-                <input
-                  type="text"
-                  required
-                  style={{
-                    width: '100%',
-                    padding: '0.6rem',
-                    background: 'var(--bg-input)',
-                    border: '1px solid var(--border-subtle)',
-                    borderRadius: 'var(--radius-sm)',
-                    color: '#fff',
-                  }}
-                  value={customerName}
-                  onChange={(e) => setCustomerName(e.target.value)}
-                  placeholder="e.g. Grace Mwende"
-                />
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-                <div>
-                  <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Customer Phone (M-Pesa)</label>
-                  <input
-                    type="text"
-                    required
-                    style={{
-                      width: '100%',
-                      padding: '0.6rem',
-                      background: 'var(--bg-input)',
-                      border: '1px solid var(--border-subtle)',
-                      borderRadius: 'var(--radius-sm)',
-                      color: '#fff',
-                    }}
-                    value={customerPhone}
-                    onChange={(e) => setCustomerPhone(e.target.value)}
-                    placeholder="07XXXXXXXX"
-                  />
-                </div>
-                <div>
-                  <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Town / Sub-County</label>
-                  <select
-                    style={{
-                      width: '100%',
-                      padding: '0.6rem',
-                      background: 'var(--bg-input)',
-                      border: '1px solid var(--border-subtle)',
-                      borderRadius: 'var(--radius-sm)',
-                      color: '#fff',
-                    }}
-                    value={town}
-                    onChange={(e) => setTown(e.target.value)}
-                  >
-                    <option value="Westlands">Westlands</option>
-                    <option value="Kilimani">Kilimani</option>
-                    <option value="Roysambu">Roysambu</option>
-                    <option value="South B">South B</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Estate / Building</label>
-                <input
-                  type="text"
-                  style={{
-                    width: '100%',
-                    padding: '0.6rem',
-                    background: 'var(--bg-input)',
-                    border: '1px solid var(--border-subtle)',
-                    borderRadius: 'var(--radius-sm)',
-                    color: '#fff',
-                  }}
-                  value={estate}
-                  onChange={(e) => setEstate(e.target.value)}
-                  placeholder="e.g. Rhapta Heights, 3rd Floor Apt 4"
-                />
-              </div>
-
-              <div>
-                <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Landmark (Critical for Rider)</label>
-                <input
-                  type="text"
-                  required
-                  style={{
-                    width: '100%',
-                    padding: '0.6rem',
-                    background: 'var(--bg-input)',
-                    border: '1px solid var(--border-subtle)',
-                    borderRadius: 'var(--radius-sm)',
-                    color: '#fff',
-                  }}
-                  value={landmark}
-                  onChange={(e) => setLandmark(e.target.value)}
-                  placeholder="e.g. Opposite Shell petrol station, pink gate"
-                />
-              </div>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '0.75rem' }}>
-                <div>
-                  <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Product</label>
-                  <select
-                    style={{
-                      width: '100%',
-                      padding: '0.6rem',
-                      background: 'var(--bg-input)',
-                      border: '1px solid var(--border-subtle)',
-                      borderRadius: 'var(--radius-sm)',
-                      color: '#fff',
-                    }}
-                    value={productSelection}
-                    onChange={(e) => setProductSelection(e.target.value)}
-                  >
-                    <option value="prod-001">Glow Radiance Serum 50ml (KES 2,800)</option>
-                    <option value="prod-002">Hydrating Day Cream SPF 30 (KES 2,200)</option>
-                  </select>
-                </div>
-                <div>
-                  <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Quantity</label>
-                  <input
-                    type="number"
-                    min="1"
-                    style={{
-                      width: '100%',
-                      padding: '0.6rem',
-                      background: 'var(--bg-input)',
-                      border: '1px solid var(--border-subtle)',
-                      borderRadius: 'var(--radius-sm)',
-                      color: '#fff',
-                    }}
-                    value={quantity}
-                    onChange={(e) => setQuantity(Number(e.target.value))}
-                  />
-                </div>
-              </div>
-
-              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.5rem', marginTop: '1rem' }}>
-                <button
-                  type="button"
-                  style={{
-                    padding: '0.5rem 1rem',
-                    background: 'transparent',
-                    border: '1px solid var(--border-subtle)',
-                    borderRadius: 'var(--radius-sm)',
-                    color: '#fff',
-                    cursor: 'pointer',
-                  }}
-                  onClick={() => setShowOrderModal(false)}
-                >
-                  Cancel
-                </button>
-                <button type="submit" className="btn-emerald">
-                  Submit & Sync Order
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
+  );
+}
+
+function Metric({ icon, label, value, detail }: { icon: React.ReactNode; label: string; value: string; detail: string }) {
+  return <section className="card metric-card"><div className="metric-icon">{icon}</div><span className="metric-title">{label}</span><strong className="metric-val">{value}</strong><span className="metric-detail">{detail}</span></section>;
+}
+
+function Panel({ title, subtitle, action, children }: { title: string; subtitle?: string; action?: React.ReactNode; children: React.ReactNode }) {
+  return <section className="portal-panel"><header className="panel-heading"><div><h2>{title}</h2>{subtitle && <p>{subtitle}</p>}</div>{action}</header>{children}</section>;
+}
+
+function EmptyState({ children }: { children: React.ReactNode }) {
+  return <div className="empty-state">{children}</div>;
+}
+
+function Status({ value }: { value: string }) {
+  return <span className={`status-badge status-${value.toLowerCase()}`}>{value.replaceAll('_', ' ')}</span>;
+}
+
+function OrderTable({ orders, onLabel }: { orders: Order[]; onLabel: (trackingNumber: string) => void }) {
+  return (
+    <div className="table-scroll"><table className="m-table"><thead><tr><th>Order / Waybill</th><th>Customer</th><th>Destination</th><th>Items</th><th>COD</th><th>Status</th><th>Created</th><th /></tr></thead><tbody>
+      {orders.map((order) => <tr key={order.id}><td><strong>{order.orderNumber}</strong>{order.waybillNumber && <small className="table-subline">{order.waybillNumber}</small>}</td><td>{order.customerName}<small className="table-subline">{order.customerPhone}</small></td><td>{order.address.townOrSubCounty}, {order.address.county}</td><td>{order.items.map((item) => `${item.quantity}× ${item.productName}`).join(', ')}</td><td>{kes(order.codAmountExpectedKes)}</td><td><Status value={order.status} /></td><td>{new Date(order.createdAt).toLocaleDateString()}</td><td>{order.waybillNumber && <button className="text-button" onClick={() => onLabel(order.waybillNumber!)}>Label PDF</button>}</td></tr>)}
+      {orders.length === 0 && <tr><td colSpan={8}><EmptyState>No orders found.</EmptyState></td></tr>}
+    </tbody></table></div>
   );
 }

@@ -1,18 +1,17 @@
-import React, { useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { api, type AuthSession } from '@shipit/api-client';
+import { Camera, CheckCircle2, Eraser, LogOut, MapPin, MessageSquare, Navigation, PenLine, Phone, RefreshCw, Upload, Wifi, WifiOff, XCircle } from 'lucide-react';
 import {
-  Phone,
-  MessageSquare,
-  Navigation,
-  CheckCircle2,
-  XCircle,
-  DollarSign,
-  Smartphone,
-  ShieldCheck,
-  Bike,
-  ArrowRight,
-} from 'lucide-react';
+  deleteQueuedPod,
+  listQueuedPods,
+  loadTasks as loadCachedTasks,
+  saveQueuedPod,
+  saveTasks,
+  type PodSubmission,
+  type QueuedPod,
+} from './offline';
 
-interface Stop {
+interface DeliveryStop {
   id: string;
   orderNumber: string;
   customerName: string;
@@ -21,383 +20,563 @@ interface Stop {
   landmark: string;
   items: string;
   codAmountKes: number;
-  status: 'PENDING' | 'DELIVERED' | 'FAILED';
+  paymentMethod: 'COD_MPESA' | 'COD_CASH' | 'PREPAID';
+  status: 'PENDING' | 'FAILED';
+}
+
+interface RiderTasks {
+  rider: { id: string; name: string; phoneNumber: string };
+  stops: DeliveryStop[];
+  totalCodExpected: number;
+}
+
+function SignaturePad({ value, onChange }: { value: string; onChange: (signature: string) => void }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const drawing = useRef(false);
+
+  function point(event: React.PointerEvent<HTMLCanvasElement>) {
+    const canvas = canvasRef.current!;
+    const bounds = canvas.getBoundingClientRect();
+    return {
+      x: ((event.clientX - bounds.left) / bounds.width) * canvas.width,
+      y: ((event.clientY - bounds.top) / bounds.height) * canvas.height,
+    };
+  }
+
+  function startDrawing(event: React.PointerEvent<HTMLCanvasElement>) {
+    const canvas = canvasRef.current!;
+    const context = canvas.getContext('2d');
+    if (!context) return;
+    drawing.current = true;
+    canvas.setPointerCapture(event.pointerId);
+    const position = point(event);
+    context.beginPath();
+    context.moveTo(position.x, position.y);
+  }
+
+  function draw(event: React.PointerEvent<HTMLCanvasElement>) {
+    if (!drawing.current) return;
+    const context = canvasRef.current?.getContext('2d');
+    if (!context) return;
+    const position = point(event);
+    context.lineWidth = 3;
+    context.lineCap = 'round';
+    context.strokeStyle = '#0f172a';
+    context.lineTo(position.x, position.y);
+    context.stroke();
+  }
+
+  function finishDrawing() {
+    if (!drawing.current) return;
+    drawing.current = false;
+    if (canvasRef.current) onChange(canvasRef.current.toDataURL('image/png'));
+  }
+
+  function clearSignature() {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height);
+    onChange('');
+  }
+
+  return (
+    <div className="signature-field">
+      <div className="signature-heading"><span><PenLine size={14} /> Recipient signature (optional)</span><button type="button" onClick={clearSignature} disabled={!value}><Eraser size={14} /> Clear</button></div>
+      <canvas
+        ref={canvasRef}
+        className="signature-pad"
+        width={600}
+        height={180}
+        aria-label="Recipient signature pad"
+        onPointerDown={startDrawing}
+        onPointerMove={draw}
+        onPointerUp={finishDrawing}
+        onPointerCancel={finishDrawing}
+      />
+    </div>
+  );
+}
+
+async function compressPhoto(file: File): Promise<string> {
+  const image = await createImageBitmap(file);
+  try {
+    let scale = Math.min(1, 1200 / Math.max(image.width, image.height));
+    const canvas = document.createElement('canvas');
+    const context = canvas.getContext('2d');
+    if (!context) throw new Error('Photo processing is unavailable in this browser.');
+    let result = '';
+    while (scale >= 0.35) {
+      canvas.width = Math.round(image.width * scale);
+      canvas.height = Math.round(image.height * scale);
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      result = canvas.toDataURL('image/jpeg', 0.68);
+      if (result.length <= 550_000) return result;
+      scale *= 0.75;
+    }
+    throw new Error('Photo is too large to save reliably for offline delivery. Please retake it closer to the parcel.');
+  } finally {
+    image.close();
+  }
 }
 
 export default function App() {
-  const [stops, setStops] = useState<Stop[]>([
-    {
-      id: 'stop-01',
-      orderNumber: 'ORD-90412',
-      customerName: 'Jane Wambui',
-      phone: '+254712345678',
-      area: 'Westlands, Rhapta Road',
-      landmark: 'Parkview Heights, Apt 3B (Opposite Shell, Pink Gate)',
-      items: '1x Glow Radiance Serum, 1x Hydrating Day Cream',
-      codAmountKes: 5250,
-      status: 'PENDING',
-    },
-    {
-      id: 'stop-02',
-      orderNumber: 'ORD-90414',
-      customerName: 'Kevin Ouma',
-      phone: '+254728554433',
-      area: 'Westlands, Muthithi Road',
-      landmark: 'Muthithi Road Offices, 2nd Fl above DTB Bank',
-      items: '1x Anker PowerCore 20k',
-      codAmountKes: 5750,
-      status: 'PENDING',
-    },
-    {
-      id: 'stop-03',
-      orderNumber: 'ORD-90418',
-      customerName: 'Stephen Maina',
-      phone: '+254720991122',
-      area: 'Parklands, 4th Avenue',
-      landmark: 'Avenue Towers, Gate 2',
-      items: '1x Wireless Earbuds Pro',
-      codAmountKes: 3800,
-      status: 'PENDING',
-    },
-  ]);
+  const [session, setSession] = useState<AuthSession | null>(api.session);
+  const [tasks, setTasks] = useState<RiderTasks | null>(null);
+  const [activeStopId, setActiveStopId] = useState('');
+  const [loginError, setLoginError] = useState('');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [recipientName, setRecipientName] = useState('');
+  const [paymentChannel, setPaymentChannel] = useState<'CASH' | 'MPESA_STK'>('MPESA_STK');
+  const [receiptNumber, setReceiptNumber] = useState('');
+  const [stkRequest, setStkRequest] = useState('');
+  const [failedStopId, setFailedStopId] = useState('');
+  const [failureReason, setFailureReason] = useState('CUSTOMER_UNREACHABLE');
+  const [online, setOnline] = useState(navigator.onLine);
+  const [queuedPods, setQueuedPods] = useState<QueuedPod[]>([]);
+  const [cachedTasksAt, setCachedTasksAt] = useState('');
+  const [signatureUrl, setSignatureUrl] = useState('');
+  const [photoUrl, setPhotoUrl] = useState('');
+  const [gps, setGps] = useState<{ lat: number; lng: number }>();
+  const syncing = useRef(false);
 
-  const [activeStop, setActiveStop] = useState<Stop | null>(stops[0]);
-  const [showPodModal, setShowPodModal] = useState(false);
-  const [showFailModal, setShowFailModal] = useState(false);
-  const [paymentMode, setPaymentMode] = useState<'MPESA' | 'CASH'>('MPESA');
-  const [stkStatus, setStkStatus] = useState<'idle' | 'sending' | 'success'>('idle');
-  const [cashCollected, setCashCollected] = useState(18500);
-  const [mpesaCollected, setMpesaCollected] = useState(30000);
-
-  const handleTriggerStk = () => {
-    setStkStatus('sending');
-    setTimeout(() => {
-      setStkStatus('success');
-    }, 1500);
-  };
-
-  const handleFinalizeDelivery = () => {
-    if (!activeStop) return;
-    const amount = activeStop.codAmountKes;
-
-    if (paymentMode === 'MPESA') {
-      setMpesaCollected((prev) => prev + amount);
-    } else {
-      setCashCollected((prev) => prev + amount);
+  const loadTasks = useCallback(async () => {
+    const userId = session?.user.id;
+    if (!userId) return;
+    setBusy(true);
+    setError('');
+    let response: RiderTasks;
+    try {
+      response = await api.request<RiderTasks>('/riders/me/tasks');
+    } catch (cause) {
+      try {
+        const cached = await loadCachedTasks<RiderTasks>(userId);
+        if (cached) {
+          setTasks(cached.value);
+          setCachedTasksAt(cached.cachedAt);
+          setActiveStopId((current) =>
+            cached.value.stops.some((stop) => stop.id === current && stop.status === 'PENDING')
+              ? current
+              : cached.value.stops.find((stop) => stop.status === 'PENDING')?.id ?? '',
+          );
+          setNotice(`Showing stops saved ${new Date(cached.cachedAt).toLocaleString()}. Refresh when connected before completing new work.`);
+        } else {
+          setError(cause instanceof Error ? cause.message : 'Could not load your assigned delivery tasks.');
+        }
+      } catch (storageError) {
+        setError(`Could not load live or saved tasks: ${storageError instanceof Error ? storageError.message : 'local storage unavailable'}`);
+      }
+      setBusy(false);
+      return;
     }
 
-    setStops((prev) =>
-      prev.map((s) => (s.id === activeStop.id ? { ...s, status: 'DELIVERED' } : s))
+    setTasks(response);
+    setActiveStopId((current) =>
+      response.stops.some((stop) => stop.id === current && stop.status === 'PENDING')
+        ? current
+        : response.stops.find((stop) => stop.status === 'PENDING')?.id ?? '',
     );
+    const cachedAt = new Date().toISOString();
+    try {
+      await saveTasks(userId, response);
+      setCachedTasksAt(cachedAt);
+    } catch (cause) {
+      setError(`Live stops loaded, but could not save an offline copy: ${cause instanceof Error ? cause.message : 'local storage unavailable'}`);
+    } finally {
+      setBusy(false);
+    }
+  }, [session?.user.id]);
 
-    setShowPodModal(false);
-    setStkStatus('idle');
+  useEffect(() => {
+    if (session) void loadTasks();
+  }, [session, loadTasks]);
 
-    // Move to next pending stop
-    const next = stops.find((s) => s.id !== activeStop.id && s.status === 'PENDING');
-    setActiveStop(next || null);
-    alert(`Stop for ${activeStop.customerName} successfully delivered and COD recorded!`);
-  };
+  useEffect(() => {
+    const updateOnline = () => setOnline(navigator.onLine);
+    window.addEventListener('online', updateOnline);
+    window.addEventListener('offline', updateOnline);
+    return () => {
+      window.removeEventListener('online', updateOnline);
+      window.removeEventListener('offline', updateOnline);
+    };
+  }, []);
 
-  const handleFailDelivery = (reason: string) => {
-    if (!activeStop) return;
-    setStops((prev) =>
-      prev.map((s) => (s.id === activeStop.id ? { ...s, status: 'FAILED' } : s))
+  const refreshOutbox = useCallback(async () => {
+    if (!session) return;
+    try {
+      setQueuedPods(await listQueuedPods(session.user.id));
+    } catch (cause) {
+      setError(`Offline delivery storage is unavailable: ${cause instanceof Error ? cause.message : 'unknown storage error'}`);
+    }
+  }, [session]);
+
+  useEffect(() => {
+    void refreshOutbox();
+  }, [refreshOutbox]);
+
+  async function handleLogin(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true);
+    setLoginError('');
+    try {
+      const result = await api.login(email, password);
+      if (!result.user.roles.includes('RIDER')) {
+        await api.logout();
+        throw new Error('This account is not assigned the Rider role.');
+      }
+      setSession(result);
+      setPassword('');
+    } catch (cause) {
+      setLoginError(cause instanceof Error ? cause.message : 'Sign-in failed.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function handleLogout() {
+    setError('');
+    try {
+      await api.logout();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not sign out cleanly.');
+    } finally {
+      setSession(null);
+      setTasks(null);
+      setQueuedPods([]);
+      setCachedTasksAt('');
+    }
+  }
+
+  async function sendStkPrompt(stop: DeliveryStop) {
+    if (!tasks) return;
+    if (!online) {
+      setError('M-Pesa STK prompts require an internet connection. Do not record M-Pesa delivery until payment is confirmed.');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      const response = await api.request<{ checkoutRequestId?: string; message?: string }>(
+        '/delivery/mpesa/stk-push',
+        { method: 'POST', body: { orderId: stop.id, riderId: tasks.rider.id } },
+      );
+      const requestId = response.checkoutRequestId ?? '';
+      setStkRequest(requestId);
+      setNotice(response.message ?? 'M-Pesa payment prompt submitted.');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'M-Pesa prompt could not be sent.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function queuePod(payload: PodSubmission) {
+    if (!session) return;
+    await saveQueuedPod({
+      submissionId: payload.submissionId,
+      userId: session.user.id,
+      queuedAt: new Date().toISOString(),
+      payload,
+    });
+    await refreshOutbox();
+    setNotice(`${payload.orderId} saved on this device. It will sync when the connection is restored.`);
+    setRecipientName('');
+    setReceiptNumber('');
+    setStkRequest('');
+    setSignatureUrl('');
+    setPhotoUrl('');
+    setGps(undefined);
+  }
+
+  async function syncOutbox() {
+    if (!session || !navigator.onLine || syncing.current) return;
+    syncing.current = true;
+    try {
+      const entries = await listQueuedPods(session.user.id);
+      setQueuedPods(entries);
+      for (const entry of entries) {
+        try {
+          await api.request('/delivery/complete', { method: 'POST', body: entry.payload });
+          await deleteQueuedPod(entry.submissionId);
+        } catch (cause) {
+          const message = cause instanceof Error ? cause.message : 'Delivery sync failed.';
+          await saveQueuedPod({ ...entry, lastError: message });
+          setError(`${entry.payload.orderId} is saved but could not sync: ${message}`);
+          break;
+        }
+      }
+      const remaining = await listQueuedPods(session.user.id);
+      setQueuedPods(remaining);
+      if (entries.length > remaining.length) {
+        setNotice(`${entries.length - remaining.length} saved delivery${entries.length - remaining.length === 1 ? '' : 'ies'} synced successfully.`);
+        await loadTasks();
+      }
+    } catch (cause) {
+      setError(`Saved deliveries could not be read: ${cause instanceof Error ? cause.message : 'local storage unavailable'}`);
+    } finally {
+      syncing.current = false;
+    }
+  }
+
+  useEffect(() => {
+    if (!session || !online) return;
+    void syncOutbox();
+    const onOnline = () => void syncOutbox();
+    window.addEventListener('online', onOnline);
+    return () => window.removeEventListener('online', onOnline);
+  }, [session, online, loadTasks]);
+
+  async function completeDelivery(event: React.FormEvent<HTMLFormElement>, stop: DeliveryStop) {
+    event.preventDefault();
+    if (!tasks || !session) return;
+    if (!online && tasks && cachedTasksAt && Date.now() - new Date(cachedTasksAt).getTime() > 24 * 60 * 60 * 1000) {
+      setError('Saved stop data is more than 24 hours old. Reconnect and refresh before recording a delivery.');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    setNotice('');
+    const selectedPaymentChannel = stop.paymentMethod === 'PREPAID'
+      ? 'PREPAID'
+      : stop.paymentMethod === 'COD_CASH'
+        ? 'CASH'
+        : paymentChannel;
+    const isMpesa = selectedPaymentChannel === 'MPESA_STK';
+    if (isMpesa && !online) {
+      setError('M-Pesa payment cannot be verified offline. Confirm payment online before recording delivery.');
+      setBusy(false);
+      return;
+    }
+    const payload: PodSubmission = {
+      orderId: stop.id,
+      riderId: tasks.rider.id,
+      submissionId: crypto.randomUUID(),
+      recipientName,
+      paymentChannel: selectedPaymentChannel,
+      amountCollectedKes: stop.paymentMethod === 'PREPAID' ? 0 : stop.codAmountKes,
+      ...(isMpesa ? { mpesaReceiptNumber: receiptNumber.trim() } : {}),
+      ...(signatureUrl ? { signatureUrl } : {}),
+      ...(photoUrl ? { photoUrl } : {}),
+      ...(gps ? { gpsLat: gps.lat, gpsLng: gps.lng } : {}),
+    };
+    try {
+      if (!navigator.onLine) {
+        await queuePod(payload);
+        return;
+      }
+      await api.request('/delivery/complete', { method: 'POST', body: payload });
+      setNotice(`${stop.orderNumber} delivered and proof of delivery recorded.`);
+      setRecipientName('');
+      setReceiptNumber('');
+      setStkRequest('');
+      setSignatureUrl('');
+      setPhotoUrl('');
+      setGps(undefined);
+      await loadTasks();
+    } catch (cause) {
+      if (cause instanceof TypeError || !navigator.onLine) {
+        try {
+          await queuePod(payload);
+          setError('');
+        } catch (storageError) {
+          setError(`Delivery was not confirmed and could not be queued: ${storageError instanceof Error ? storageError.message : 'local storage unavailable'}`);
+        }
+      } else {
+        setError(cause instanceof Error ? cause.message : 'Delivery could not be completed.');
+      }
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function capturePhoto(file?: File) {
+    if (!file) return;
+    setError('');
+    try {
+      setPhotoUrl(await compressPhoto(file));
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Could not process delivery photo.');
+    }
+  }
+
+  function captureLocation() {
+    if (!navigator.geolocation) {
+      setError('Location capture is not supported by this browser.');
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setGps({ lat: position.coords.latitude, lng: position.coords.longitude });
+        setError('');
+      },
+      (cause) => setError(`Could not capture delivery location: ${cause.message}`),
+      { enableHighAccuracy: true, timeout: 10_000, maximumAge: 30_000 },
     );
-    setShowFailModal(false);
+  }
 
-    // Call API / log NDR
-    fetch('/api/delivery/fail', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        orderId: activeStop.orderNumber,
-        riderId: 'rdr-001',
-        failureReason: reason,
-      }),
-    }).catch(() => null);
+  function selectStop(stopId: string) {
+    setActiveStopId(stopId);
+    setRecipientName('');
+    setReceiptNumber('');
+    setStkRequest('');
+    setSignatureUrl('');
+    setPhotoUrl('');
+    setGps(undefined);
+  }
 
-    const next = stops.find((s) => s.id !== activeStop.id && s.status === 'PENDING');
-    setActiveStop(next || null);
-    alert(`NDR Alert raised! Customer Care has been alerted to call ${activeStop.customerName} immediately.`);
-  };
+  async function reportFailure(stop: DeliveryStop) {
+    if (!tasks) return;
+    setBusy(true);
+    setError('');
+    setNotice('');
+    try {
+      await api.request('/delivery/fail', {
+        method: 'POST',
+        body: { orderId: stop.id, riderId: tasks.rider.id, failureReason },
+      });
+      setFailedStopId('');
+      setNotice(`Delivery exception recorded for ${stop.orderNumber}; the operations team has been notified.`);
+      await loadTasks();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Delivery exception could not be recorded.');
+    } finally {
+      setBusy(false);
+    }
+  }
 
-  const pendingCount = stops.filter((s) => s.status === 'PENDING').length;
+  if (!session) {
+    return (
+      <main className="rider-shell auth-shell">
+        <section className="auth-card">
+          <div className="r-avatar">SI</div>
+          <h1>Rider sign in</h1>
+          <p>Use your Ship It rider account to load your assigned manifest.</p>
+          {loginError && <div className="r-alert error">{loginError}</div>}
+          <form onSubmit={handleLogin} className="r-form">
+            <label>Email<input type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} required /></label>
+            <label>Password<input type="password" autoComplete="current-password" value={password} onChange={(event) => setPassword(event.target.value)} required /></label>
+            <button className="r-btn r-btn-deliver" disabled={busy}>{busy ? 'Signing in…' : 'Sign in'}</button>
+          </form>
+        </section>
+      </main>
+    );
+  }
+
+  const activeStop = tasks?.stops.find((stop) => stop.id === activeStopId);
+  const pendingStops = tasks?.stops.filter((stop) => stop.status === 'PENDING') ?? [];
 
   return (
     <div className="rider-shell">
-      {/* Header */}
       <header className="rider-header">
         <div className="rider-badge">
-          <div className="r-avatar">PK</div>
+          <div className="r-avatar">{tasks?.rider.name.split(' ').map((part) => part[0]).slice(0, 2).join('') ?? '…'}</div>
           <div>
-            <h3 style={{ fontSize: '0.95rem', fontWeight: 800 }}>Peter Karanja</h3>
-            <span style={{ fontSize: '0.7rem', color: '#38bdf8' }}>Route: WESTLANDS-01 • KMDF 221X</span>
+            <h3>{tasks?.rider.name ?? `${session.user.firstName} ${session.user.lastName}`}</h3>
+            <span>{tasks ? `Rider ID: ${tasks.rider.id}` : 'Loading route…'}</span>
           </div>
         </div>
-        <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#34d399' }}>
-          ● ON DUTY
+        <div className="header-actions">
+          <button className="icon-button" onClick={() => void loadTasks()} title="Refresh tasks" disabled={busy}><RefreshCw size={17} /></button>
+          <button className="icon-button" onClick={() => void handleLogout()} title="Sign out"><LogOut size={17} /></button>
         </div>
       </header>
 
-      {/* Stats Bar */}
-      <div className="r-stats-bar">
-        <div className="r-stat-box">
-          <span>Stops Remaining</span>
-          <h2>{pendingCount} of {stops.length}</h2>
+      <main className="stops-scroll">
+        <div className={`connection-banner ${online ? 'connection-online' : 'connection-offline'}`} role="status">
+          {online ? <Wifi size={16} /> : <WifiOff size={16} />}
+          <span>{online ? 'Online' : 'Offline'}{queuedPods.length ? ` · ${queuedPods.length} saved delivery${queuedPods.length === 1 ? '' : 'ies'} waiting to sync` : ''}</span>
+          {online && queuedPods.length > 0 && <button type="button" onClick={() => void syncOutbox()} disabled={busy}><Upload size={14} /> Sync</button>}
         </div>
-        <div className="r-stat-box">
-          <span>Total COD Collected</span>
-          <h2 style={{ color: '#34d399' }}>KES {(cashCollected + mpesaCollected).toLocaleString()}</h2>
-        </div>
-      </div>
-
-      {/* Stops List */}
-      <div className="stops-scroll">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <h4 style={{ fontSize: '0.85rem', textTransform: 'uppercase', color: 'var(--text-muted)' }}>
-            Delivery Run Sheet
-          </h4>
-          <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Manifest #MNF-0881</span>
-        </div>
-
-        {stops.map((stop, index) => {
-          const isCurrent = activeStop?.id === stop.id;
-          return (
-            <div
-              key={stop.id}
-              className={`stop-card ${isCurrent ? 'active-stop' : ''}`}
-              onClick={() => stop.status === 'PENDING' && setActiveStop(stop)}
-            >
-              <div className="stop-top">
-                <span className={`stop-tag ${isCurrent ? 'tag-active' : ''}`}>
-                  Stop #{index + 1} • {stop.orderNumber}
-                </span>
-                {stop.status === 'DELIVERED' && (
-                  <span style={{ color: 'var(--status-green)', fontSize: '0.8rem', fontWeight: 700 }}>
-                    ✓ Delivered
-                  </span>
-                )}
-                {stop.status === 'FAILED' && (
-                  <span style={{ color: 'var(--status-red)', fontSize: '0.8rem', fontWeight: 700 }}>
-                    ⚠ NDR Escalated
-                  </span>
-                )}
-                {stop.status === 'PENDING' && (
-                  <span style={{ color: '#38bdf8', fontSize: '0.8rem' }}>Pending</span>
-                )}
-              </div>
-
-              <div>
-                <div className="stop-cust">{stop.customerName}</div>
-                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{stop.area}</div>
-              </div>
-
-              <div className="stop-landmark">
-                <strong>📍 Landmark:</strong> {stop.landmark}
-              </div>
-
-              <div className="stop-cod">
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>COD to Collect:</span>
-                <strong>KES {stop.codAmountKes.toLocaleString()}</strong>
-              </div>
-
-              {/* Stop Actions (if active & pending) */}
-              {isCurrent && stop.status === 'PENDING' && (
-                <>
-                  <div className="rider-action-row">
-                    <a href={`tel:${stop.phone}`} className="r-btn r-btn-call">
-                      <Phone size={15} /> Call
-                    </a>
-                    <a
-                      href={`https://wa.me/${stop.phone.replace('+', '')}?text=Hello%20${stop.customerName},%20I%20am%20your%20Ship%20It%20rider`}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="r-btn r-btn-wa"
-                    >
-                      <MessageSquare size={15} /> WhatsApp
-                    </a>
-                    <a
-                      href="https://maps.google.com/?q=Westlands+Nairobi"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="r-btn r-btn-maps"
-                    >
-                      <Navigation size={15} /> Maps
-                    </a>
-                  </div>
-
-                  <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '0.5rem', marginTop: '0.25rem' }}>
-                    <button
-                      className="r-btn r-btn-deliver"
-                      onClick={() => setShowPodModal(true)}
-                    >
-                      <CheckCircle2 size={18} /> Confirm & Collect
+        {!online && cachedTasksAt && <div className="r-alert warning">Using stops saved {new Date(cachedTasksAt).toLocaleString()}. M-Pesa prompts and failed-attempt reports need a connection.</div>}
+        {queuedPods.some((entry) => entry.lastError) && <div className="r-alert error">{queuedPods.filter((entry) => entry.lastError).map((entry) => `${entry.payload.orderId}: ${entry.lastError}`).join(' · ')}</div>}
+        {error && <div className="r-alert error">{error}</div>}
+        {notice && <div className="r-alert success">{notice}</div>}
+        {tasks && (
+          <>
+            <section className="r-stats-bar">
+              <div className="r-stat-box"><span>Stops remaining</span><h2>{pendingStops.filter((stop) => !queuedPods.some((entry) => entry.payload.orderId === stop.id)).length} of {tasks.stops.length}</h2></div>
+              <div className="r-stat-box"><span>Expected COD on route</span><h2>KES {tasks.totalCodExpected.toLocaleString()}</h2></div>
+            </section>
+            <div className="section-heading">
+              <div><h2>Assigned delivery stops</h2><p>Select a pending stop to open its delivery actions.</p></div>
+              <span>{tasks.stops.length} stops</span>
+            </div>
+            {tasks.stops.length === 0 && <div className="r-empty">No active delivery stops are assigned to your account.</div>}
+            {tasks.stops.map((stop) => {
+              const selected = stop.id === activeStopId;
+              const isQueued = queuedPods.some((entry) => entry.payload.orderId === stop.id);
+              return (
+                <article className={`stop-card ${selected ? 'active-stop' : ''}`} key={stop.id}>
+                  <div className="stop-top">
+                    <button className="stop-select" onClick={() => selectStop(stop.id)} disabled={stop.status !== 'PENDING'}>
+                      {stop.orderNumber}
                     </button>
-                    <button
-                      className="r-btn r-btn-fail"
-                      onClick={() => setShowFailModal(true)}
-                    >
-                      <XCircle size={16} /> Failed
-                    </button>
+                    <span className={`stop-tag ${isQueued ? 'tag-queued' : stop.status === 'PENDING' ? 'tag-active' : 'tag-failed'}`}>{isQueued ? 'SAVED OFFLINE' : stop.status.replace('_', ' ')}</span>
                   </div>
-                </>
-              )}
-            </div>
-          );
-        })}
-      </div>
-
-      {/* POD / COD PAYMENT MODAL */}
-      {showPodModal && activeStop && (
-        <div className="modal-sheet">
-          <div className="sheet-content">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <h3 style={{ fontSize: '1.1rem', fontWeight: 800 }}>Complete Delivery & Collect COD</h3>
-              <button
-                style={{ background: 'none', border: 'none', color: '#94a3b8', fontSize: '1.2rem', cursor: 'pointer' }}
-                onClick={() => setShowPodModal(false)}
-              >
-                ✕
-              </button>
-            </div>
-
-            <div style={{ background: '#0f172a', padding: '0.85rem', borderRadius: 10 }}>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Customer: {activeStop.customerName}</div>
-              <div style={{ fontSize: '1.25rem', fontWeight: 800, color: '#34d399', fontFamily: 'var(--font-mono)' }}>
-                Amount: KES {activeStop.codAmountKes.toLocaleString()}
-              </div>
-            </div>
-
-            {/* Payment Channel Selector */}
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-              <button
-                type="button"
-                style={{
-                  padding: '0.75rem',
-                  borderRadius: 10,
-                  border: paymentMode === 'MPESA' ? '2px solid #10b981' : '1px solid #334155',
-                  background: paymentMode === 'MPESA' ? 'rgba(16, 185, 129, 0.15)' : '#1e293b',
-                  color: '#fff',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                }}
-                onClick={() => setPaymentMode('MPESA')}
-              >
-                📱 M-Pesa STK Push
-              </button>
-              <button
-                type="button"
-                style={{
-                  padding: '0.75rem',
-                  borderRadius: 10,
-                  border: paymentMode === 'CASH' ? '2px solid #38bdf8' : '1px solid #334155',
-                  background: paymentMode === 'CASH' ? 'rgba(56, 189, 248, 0.15)' : '#1e293b',
-                  color: '#fff',
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                }}
-                onClick={() => setPaymentMode('CASH')}
-              >
-                💵 Physical Cash
-              </button>
-            </div>
-
-            {paymentMode === 'MPESA' && (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                  Sends an instant Lipa Na M-Pesa prompt directly to customer's phone ({activeStop.phone}).
-                </p>
-                {stkStatus === 'idle' && (
-                  <button
-                    className="r-btn"
-                    style={{ background: '#16a34a', width: '100%' }}
-                    onClick={handleTriggerStk}
-                  >
-                    Send STK Prompt to Customer Phone
-                  </button>
-                )}
-                {stkStatus === 'sending' && (
-                  <div style={{ textAlign: 'center', padding: '0.75rem', color: '#f59e0b', fontSize: '0.85rem' }}>
-                    ⏳ Waiting for customer to enter PIN on handset...
-                  </div>
-                )}
-                {stkStatus === 'success' && (
-                  <div style={{ background: 'rgba(16, 185, 129, 0.2)', padding: '0.75rem', borderRadius: 8, color: '#34d399', fontSize: '0.85rem' }}>
-                    ✓ M-Pesa Confirmed: QJD891K20L Verified!
-                  </div>
-                )}
-              </div>
-            )}
-
-            {paymentMode === 'CASH' && (
-              <div style={{ background: '#0f172a', padding: '0.85rem', borderRadius: 8, fontSize: '0.8rem', color: '#94a3b8' }}>
-                Rider Peter Karanja confirms receipt of KES {activeStop.codAmountKes.toLocaleString()} in physical notes into secure pouch.
-              </div>
-            )}
-
-            <button
-              className="r-btn r-btn-deliver"
-              style={{ width: '100%', marginTop: '0.5rem' }}
-              onClick={handleFinalizeDelivery}
-            >
-              Sign Off & Complete Stop
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* FAILED DELIVERY / NDR MODAL */}
-      {showFailModal && activeStop && (
-        <div className="modal-sheet">
-          <div className="sheet-content">
-            <h3 style={{ fontSize: '1.1rem', fontWeight: 800, color: 'var(--status-red)' }}>
-              Report Delivery Exception (NDR)
-            </h3>
-            <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-              Customer Care will be immediately notified while you are in the neighborhood to attempt recovery.
-            </p>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              <button
-                className="r-btn"
-                style={{ background: '#1e293b', justifyContent: 'flex-start', padding: '0.75rem' }}
-                onClick={() => handleFailDelivery('CUSTOMER_UNREACHABLE')}
-              >
-                🔴 Customer Unreachable (Phone Off / No Answer)
-              </button>
-              <button
-                className="r-btn"
-                style={{ background: '#1e293b', justifyContent: 'flex-start', padding: '0.75rem' }}
-                onClick={() => handleFailDelivery('RESCHEDULE_REQUESTED')}
-              >
-                🟠 Customer Requested Reschedule
-              </button>
-              <button
-                className="r-btn"
-                style={{ background: '#1e293b', justifyContent: 'flex-start', padding: '0.75rem' }}
-                onClick={() => handleFailDelivery('WRONG_LOCATION')}
-              >
-                🟡 Address / Landmark Incorrect
-              </button>
-              <button
-                className="r-btn"
-                style={{ background: '#1e293b', justifyContent: 'flex-start', padding: '0.75rem' }}
-                onClick={() => handleFailDelivery('REFUSED_DELIVERY')}
-              >
-                ⚪ Customer Refused Package
-              </button>
-            </div>
-
-            <button
-              style={{ padding: '0.75rem', background: 'transparent', border: '1px solid #334155', borderRadius: 10, color: '#fff', cursor: 'pointer' }}
-              onClick={() => setShowFailModal(false)}
-            >
-              Cancel
-            </button>
-          </div>
-        </div>
-      )}
+                  <div><div className="stop-cust">{stop.customerName}</div><div className="r-muted">{stop.area}</div></div>
+                  <div className="stop-landmark"><MapPin size={15} /> {stop.landmark}</div>
+                  <div className="r-muted">{stop.items}</div>
+                  <div className="stop-cod"><span>COD expected</span><strong>KES {stop.codAmountKes.toLocaleString()}</strong></div>
+                  {isQueued && selected && <div className="r-alert warning">This delivery is saved on this device and cannot be submitted again. Keep this app installed and sync when online.</div>}
+                  {selected && stop.status === 'PENDING' && !isQueued && (
+                    <div className="stop-actions">
+                      <div className="rider-action-row">
+                        <a href={`tel:${stop.phone}`} className="r-btn r-btn-call"><Phone size={15} /> Call</a>
+                        <a href={`https://wa.me/${stop.phone.replace(/\D/g, '')}`} target="_blank" rel="noreferrer" className="r-btn r-btn-wa"><MessageSquare size={15} /> WhatsApp</a>
+                        <a href={`https://maps.google.com/?q=${encodeURIComponent(`${stop.landmark} ${stop.area}`)}`} target="_blank" rel="noreferrer" className="r-btn r-btn-maps"><Navigation size={15} /> Maps</a>
+                      </div>
+                      <form className="r-form delivery-form" onSubmit={(event) => void completeDelivery(event, stop)}>
+                        <h3>Proof of delivery</h3>
+                        <label>Recipient name<input value={recipientName} onChange={(event) => setRecipientName(event.target.value)} required minLength={2} /></label>
+                        <label>Payment channel
+                          <select value={stop.paymentMethod === 'PREPAID' ? 'PREPAID' : stop.paymentMethod === 'COD_CASH' ? 'CASH' : paymentChannel} onChange={(event) => setPaymentChannel(event.target.value as 'CASH' | 'MPESA_STK')}>
+                            {stop.paymentMethod === 'PREPAID' ? <option value="PREPAID">Prepaid · no collection</option> : stop.paymentMethod === 'COD_CASH' ? <option value="CASH">Cash</option> : <option value="MPESA_STK">M-Pesa</option>}
+                          </select>
+                        </label>
+                        {stop.paymentMethod === 'COD_MPESA' && paymentChannel === 'MPESA_STK' && (
+                          <>
+                            <button type="button" className="r-btn r-btn-wa" onClick={() => void sendStkPrompt(stop)} disabled={busy}>
+                              {busy ? 'Sending…' : 'Send M-Pesa STK prompt'}
+                            </button>
+                            {stkRequest && <p className="r-muted">Request {stkRequest} sent. Confirm payment with the customer, then enter the receipt below.</p>}
+                            <label>M-Pesa receipt number<input value={receiptNumber} onChange={(event) => setReceiptNumber(event.target.value)} required /></label>
+                          </>
+                        )}
+                        <SignaturePad value={signatureUrl} onChange={setSignatureUrl} />
+                        <label className="photo-picker"><span><Camera size={15} /> Parcel photo (optional)</span><input type="file" accept="image/*" capture="environment" onChange={(event) => void capturePhoto(event.target.files?.[0])} /></label>
+                        {photoUrl && <img className="pod-photo-preview" src={photoUrl} alt="Captured parcel proof" />}
+                        <button type="button" className="r-btn r-btn-maps" onClick={captureLocation}><MapPin size={15} /> {gps ? `Location captured (${gps.lat.toFixed(5)}, ${gps.lng.toFixed(5)})` : 'Capture delivery location'}</button>
+                        <button type="submit" className="r-btn r-btn-deliver" disabled={busy}><CheckCircle2 size={18} /> Record delivery</button>
+                      </form>
+                      {failedStopId === stop.id ? (
+                        <div className="r-form">
+                          <label>Failure reason
+                            <select value={failureReason} onChange={(event) => setFailureReason(event.target.value)}>
+                              <option value="CUSTOMER_UNREACHABLE">Customer unreachable</option>
+                              <option value="WRONG_LOCATION">Wrong location</option>
+                              <option value="RESCHEDULE_REQUESTED">Reschedule requested</option>
+                              <option value="REFUSED_DELIVERY">Refused delivery</option>
+                              <option value="CASH_SHORTAGE">Cash shortage</option>
+                            </select>
+                          </label>
+                          <button type="button" className="r-btn r-btn-fail" onClick={() => void reportFailure(stop)} disabled={busy || !online}><XCircle size={16} /> Submit failed attempt</button>
+                        </div>
+                      ) : (
+                        <button className="r-btn r-btn-fail" onClick={() => setFailedStopId(stop.id)} disabled={!online}><XCircle size={16} /> Report failed attempt</button>
+                      )}
+                    </div>
+                  )}
+                </article>
+              );
+            })}
+          </>
+        )}
+      </main>
     </div>
   );
 }

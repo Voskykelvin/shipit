@@ -18,7 +18,14 @@ export type UserRole =
   | 'MERCHANT_STAFF';
 
 export type PermissionSlug =
+  | 'control_tower.view'
+  | 'exception.manage'
+  | 'order.view'
+  | 'order.manage'
   | 'inventory.view'
+  | 'inventory.locations.view'
+  | 'inbound.create'
+  | 'product.manage'
   | 'inventory.receive'
   | 'inventory.pick'
   | 'inventory.pack'
@@ -28,10 +35,19 @@ export type PermissionSlug =
   | 'order.cancel'
   | 'dispatch.manifest'
   | 'dispatch.scan'
+  | 'dispatch.view'
+  | 'dispatch.handover'
+  | 'rider.view'
+  | 'rider.manage'
+  | 'delivery.tasks'
   | 'delivery.execute'
+  | 'ndr.view'
+  | 'ndr.resolve'
   | 'finance.view'
   | 'finance.reconcile'
   | 'settlement.approve'
+  | 'settlement.create'
+  | 'settlement.disburse'
   | 'merchant.manage'
   | 'audit.view';
 
@@ -396,8 +412,10 @@ export type LedgerType =
   | 'FULFILLMENT_FEE_DEBIT'
   | 'STORAGE_FEE_DEBIT'
   | 'DELIVERY_FEE_DEBIT'
+  | 'COD_COMMISSION_DEBIT'
   | 'RETURN_FEE_DEBIT'
   | 'SETTLEMENT_PAYOUT_DEBIT'
+  | 'ADJUSTMENT'
   | 'MANUAL_ADJUSTMENT';
 
 export interface MerchantLedgerEntry {

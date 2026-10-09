@@ -99,26 +99,24 @@ To ensure commercial feasibility and operational velocity, the feature set is st
 ```
 
 ### 3.2 Monorepo Codebase Structure
+The following is the current repository layout. The diagram in 3.1 is a target blueprint; it does not describe the current framework choices or imply that every target feature is implemented.
 ```text
 shipit/
 ├── apps/
-│   ├── website/              # Public marketing & lead acquisition (Next.js)
-│   ├── staff-portal/         # High-velocity internal ops app (React + Vite + Tailwind)
-│   ├── merchant-portal/      # Merchant self-service inventory & analytics (Next.js)
-│   └── rider-pwa/            # Lightweight mobile PWA for delivery riders
+│   ├── staff-portal/         # Internal operations app (React + Vite)
+│   ├── merchant-portal/      # Merchant self-service app (React + Vite)
+│   └── rider-pwa/            # Rider delivery app (React + Vite)
 ├── services/
-│   ├── api/                  # Modular Monolith REST API (NestJS + TypeScript)
-│   └── worker/               # Background task consumer (BullMQ + Puppeteer/PDF generation)
+│   └── api/                  # Express + TypeScript REST API and background worker
 ├── packages/
-│   ├── database/             # Prisma / Drizzle ORM schema, migrations, seeds
-│   ├── shared-types/         # Cross-application TypeScript contracts & DTOs
-│   ├── validation/           # Zod schemas for order creation, addresses, ledger entries
-│   ├── ui/                   # Shared design tokens & accessible component primitives
-│   └── logger/               # Structured JSON logger & audit telemetry
+│   ├── api-client/           # Shared authenticated browser API client
+│   ├── database/             # Prisma schema, migrations and seed
+│   ├── shared-types/         # Cross-application TypeScript contracts
+│   └── validation/           # Shared Zod request schemas
 └── docker/
-    ├── docker-compose.yml    # PostgreSQL, Redis, Mailpit, MinIO local environment
-    └── Dockerfile.*
+    └── compose.yml           # Local PostgreSQL and Redis services
 ```
+There is currently no `apps/website`, standalone `services/worker`, shared UI package, or Next.js/NestJS application in this repository.
 
 ---
 
@@ -337,44 +335,33 @@ Net Balance available for Settlement:
 
 ---
 
-## 6. DEPARTMENTAL MODULES & USER INTERFACE MATRIX
+## 6. IMPLEMENTED BACKEND-TO-FRONTEND FEATURE MAP
 
-### 6.1 Internal Staff Operating System (React + Vite SPA)
-Designed with high-contrast, keyboard-friendly layouts, large barcode scan inputs, and zero decorative bloat.
+The current clients are React/Vite applications backed by the authenticated Express API. Staff screens and navigation are permission-aware; API authorization remains authoritative. Backend webhooks and background jobs are server-to-server features, not interactive portal pages.
 
-1. **Executive Control Tower:** High-level operational throughput (orders processed, delivery success rate, RTO percentage, total COD collected, unreconciled funds, storage saturation).
-2. **Operations & Dispatch Hub:** Waybill scan station, automated routing validation, manifest assembly, driver assignment, real-time vehicle load sheets.
-3. **Warehouse Management (WMS):**
-   - ASN receiving & discrepancy logging.
-   - Storage location matrix (Zone-Aisle-Rack-Shelf-Bin lookup).
-   - Wave picking queue & batch progress trackers.
-   - Packing validation station with digital weight scale integration.
-4. **Customer Care Desk:**
-   - Unverified COD order queue.
-   - Real-time NDR emergency escalation board.
-   - Customer contact logs, address amendment modals, reschedule calendar.
-5. **Reverse Logistics & Quality Control:**
-   - Return-to-Warehouse inbound scanner.
-   - Condition grading console (Grade A restock, Grade B repackage, Grade C write-off/quarantine).
-6. **Finance & Clearing House:**
-   - Daily rider shift reconciliation grid.
-   - Daraja M-Pesa callback reconciliation & exception log.
-   - Merchant billing ledgers, rate card builder, and settlement disbursement queue.
+| Backend domain / API capability | Frontend surface | Current coverage and boundary |
+| :--- | :--- | :--- |
+| Login, logout, session permissions | All three portals via `packages/api-client` | Bearer-token login/logout; staff navigation and action controls are gated by permissions. |
+| Control-tower KPIs and exceptions | Staff: Control tower | Summary and audit-visible exceptions. |
+| Orders, verification, cancellation, CSV import, waybill PDFs | Merchant: Orders; Staff: Orders & verification | Merchants create orders, upload CSVs and download generated labels. Staff review/verify, cancel and import. |
+| Inventory balances, transactions, locations, adjustments | Merchant: Inventory; Staff: WMS & inbound | Merchants view stock/ledger-derived quantities; staff can see permitted location and transaction data and post permitted adjustments. |
+| Inbound warehouse lookup, ASN creation and receiving | Merchant: Inventory & inbound; Staff: WMS & inbound | Merchant ASN scheduling and staff receipt with received/damaged quantities. Staff actions are permission-gated. |
+| Pick waves, task confirmation and packing | Staff: Pick & pack | Wave lifecycle, barcode-confirmed picking and order packing. |
+| Routes, manifests, route scans and custody handover | Staff: Dispatch | Staged manifest creation, route validation, parcel scans and permitted handover. |
+| Rider task lookup, delivery completion/failure, M-Pesa STK initiation | Rider: assigned stops | Riders fetch their own tasks, contact/navigate to recipients, initiate STK, submit delivery/POD details, or report failure. |
+| NDR case resolution | Staff: NDR exceptions | Permitted users retry delivery or route a parcel to RTO. |
+| Return creation, receiving and inspection | Staff: Returns | Staff with matching permissions create returns, enter actual received quantities and quarantine locations, and select condition grades and disposition actions. |
+| Rider shift reconciliation, cash-variance approval, merchant ledgers and settlement lifecycle | Merchant: Finance; Staff: Finance | Merchants view ledger/settlement history and request settlements. Staff reconcile shifts; operations managers and super admins review and approve cash variances with an explicit reason. Authorized finance staff create, approve or disburse/mark settlements. |
+| Merchant, merchant-user, product and rider provisioning | Staff: Merchants & fleet | Onboarding and catalog/rider setup are available to users with the matching permissions. |
+| Public shipment tracking | Merchant portal: Public tracking tab | Uses unauthenticated `/tracking/:trackingNumber`; a standalone marketing/public website is not present. |
+| M-Pesa callbacks, B2C result callbacks and background domain jobs | API/webhook and worker processes | Backend integrations execute without an operator-facing callback-monitoring screen. |
 
-### 6.2 Merchant Self-Service Portal (Next.js App)
-A clean, modern SaaS analytics and inventory dashboard:
-- **Catalog & Inventory:** Real-time stock levels (Available vs. Reserved vs. Damaged), stock aging indicators, automated low-stock reorder warnings.
-- **Inbound ASN Creator:** Schedule deliveries to the Ship It warehouse with automated barcode manifest downloads.
-- **Order Management:** Single-order creation, drag-and-drop CSV batch upload, tracking timeline links, POD visual inspection.
-- **Financial Ledger & Payouts:** Breakdown of gross COD collected, itemized fulfillment and storage invoices, next scheduled payout countdown, and one-click payout requests.
-- **Performance Analytics:** RTO rate by delivery zone, top-selling SKUs, and average delivery cycle times.
-
-### 6.3 Rider Mobile PWA
-- Optimized for mobile Chrome/Safari with offline IndexedDB caching.
-- Native device camera barcode scanner for waybill validation.
-- One-tap Customer Calling and WhatsApp navigation deep links.
-- Single-button STK push trigger to customer phone.
-- Digital signature pad and proof-of-delivery camera upload.
+### 6.1 Current Client Limits (Not Yet Implemented)
+- There is no separate public marketing website.
+- The rider app does not currently provide offline task caching, camera barcode scanning, signature capture, or photo upload.
+- STK initiation is asynchronous; the rider app does not poll callback state. The rider enters the customer-confirmed M-Pesa receipt before completing a delivery.
+- The staff finance UI does not provide a dedicated M-Pesa callback reconciliation console or rate-card builder.
+- Control-tower and portal views are API-backed, but no live database/API end-to-end browser test is implied by a successful compile.
 
 ---
 
@@ -473,6 +460,41 @@ Before opening the platform to public scale, the system must pass this continuou
 4. **Dispatch:** Parcels scanned into manifest. Wrong-route test parcel correctly blocked with an error sound. Rider signs for manifest and departs.
 5. **Execution & NDR:** Rider delivers 8 orders via M-Pesa STK push. 1 order fails (unreachable); real-time NDR triggers immediate Customer Care callback.
 6. **Reconciliation & Settlement:** Rider returns, submits physical cash and M-Pesa receipts. System confirms zero variance and closes shift. Merchant ledger correctly credits COD, deducts fulfillment fees, and generates an approved settlement payout report.
+
+### 10.1 Acceptance test batch 1
+An opt-in API acceptance journey is available at `services/api/test/acceptance/operations-flow.test.ts`. It exercises merchant provisioning, ASN receipt and GRN, inventory quantities, CSV order import, order verification/cancellation, pick-wave scans, wrong-route rejection, manifest handover, rider delivery/NDR-to-RTO, cash reconciliation, tracking, and merchant settlement approval/payment.
+
+Run it against a **disposable local acceptance database** with the API and Redis running and a seeded `SUPER_ADMIN` account:
+
+```text
+SHIPIT_ACCEPTANCE_API_URL=http://localhost:4000
+SHIPIT_ACCEPTANCE_ADMIN_EMAIL=<seeded-admin-email>
+SHIPIT_ACCEPTANCE_ADMIN_PASSWORD=<seeded-admin-password>
+SHIPIT_ACCEPTANCE_CONFIRM_DATA_WRITES=YES
+npm run test:acceptance --workspace=@shipit/api
+```
+
+The test creates persistent merchant, rider, order, inventory, and finance records; it does not clean them up. It rejects non-local API URLs unless `SHIPIT_ACCEPTANCE_ALLOW_REMOTE=true` is explicitly set. Only use that override with a dedicated, disposable staging environment. This first batch verifies the cash-COD flow and does not call Safaricom; Daraja callback and payout sandbox testing remains a separate batch.
+
+### 10.2 Rider PWA offline batch 2
+The rider PWA caches its app shell and last successfully loaded stop list, and stores offline cash/prepaid POD submissions with captured signature, parcel photo, and optional GPS in browser IndexedDB. Saved PODs are scoped to the signed-in rider account and sync in order when connectivity returns. A database-backed submission ID makes retries idempotent. M-Pesa STK prompts and failed-attempt reports remain online-only; the device must stay available until queued PODs sync. Apply migration `0010_pod_submission_id` before deploying the API and regenerate the Prisma client. Local browser storage is not encrypted, so only use offline mode on managed, screen-locked devices.
+
+### 10.3 Payment callback contract batch 3
+`services/api/test/mpesaCallbacks.test.ts` exercises representative STK, C2B, and B2C callback payloads plus exact C2B replay matching. Repeated C2B receipts are acknowledged only when the order, merchant, payment method, and amount all match the original transaction. These unit tests make no Safaricom calls; live/sandbox callback delivery and payout execution still require Daraja sandbox credentials, configured callback URLs, and a disposable test account.
+
+### 10.4 Pilot readiness gate
+**Current decision: NO-GO for a live merchant pilot.** The code checks completed in this batch are not substitutes for operating the system against deployed dependencies.
+
+| Gate | Current evidence | Required before go-live |
+|---|---|---|
+| Build and code checks | API typecheck/build and 10 API tests pass; rider PWA builds | Keep these checks green in the release pipeline |
+| Rider offline shell | Production preview reloads while offline | Verify sign-in session, cached stop freshness, queued POD capture, reconnect sync, and duplicate retry on a managed HTTPS device |
+| Database and migrations | Prisma schema validates; migration `0010_pod_submission_id` is present | Take a backup, deploy all migrations, verify restore, then run the write-enabled acceptance journey against a disposable seeded environment |
+| Payment provider | STK/C2B/B2C callback shape and C2B replay unit tests pass | Execute sandbox STK collection, C2B confirmation, B2C success/failure/timeout and callback retry against Safaricom Daraja |
+| Variance approval | Code path and role wiring are present | Verify seeded Operations Manager and Super Admin approve a pending variance; confirm ordinary finance users cannot approve |
+| Production operations | `docker/compose.yml` is a development stack (dev commands, source mounts, and local fallback credentials) | Choose a hosting target and provide production images, TLS/reverse proxy, secret management, restricted network exposure, monitoring/alerts, and tested backup/rollback procedures |
+
+The live acceptance journey was safely skipped in this development environment because no acceptance API URL was configured; Docker is also unavailable here. The repository currently has no production deployment stack, so do not expose the development Compose stack or treat this gate as cleared. Revisit this table with deployment and sandbox evidence before onboarding merchants.
 
 ---
 *Ship It — Engineering & Operations Team | Master Blueprint v1.0*

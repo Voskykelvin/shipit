@@ -12,8 +12,15 @@
     "dev:merchant": "npm run dev --workspace=@shipit/merchant-portal",
     "dev:rider": "npm run dev --workspace=@shipit/rider-pwa",
     "dev:api": "npm run dev --workspace=@shipit/api",
+    "dev:worker": "npm run dev:worker --workspace=@shipit/api",
+    "db:up": "docker compose -f docker/compose.yml up -d postgres redis",
+    "db:down": "docker compose -f docker/compose.yml down",
+    "db:migrate": "npm run db:migrate:dev --workspace=@shipit/database",
+    "db:migrate:deploy": "npm run db:migrate:deploy --workspace=@shipit/database",
+    "db:seed": "npm run db:seed --workspace=@shipit/database",
     "build": "npm run build --workspaces --if-present",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
   },
   "devDependencies": {
     "typescript": "^5.7.3"

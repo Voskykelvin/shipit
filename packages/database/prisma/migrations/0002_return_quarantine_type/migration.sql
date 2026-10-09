@@ -1,0 +1,1 @@
+ALTER TYPE "InventoryTransactionType" ADD VALUE 'RETURN_QUARANTINE';

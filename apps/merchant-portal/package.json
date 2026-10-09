@@ -9,6 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@shipit/api-client": "*",
     "@shipit/shared-types": "*",
     "@shipit/validation": "*",
     "lucide-react": "^0.475.0",

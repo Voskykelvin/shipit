@@ -1,0 +1,166 @@
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: shipit
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-shipit}
+      POSTGRES_DB: shipit
+    ports:
+      - "5432:5432"
+    volumes:
+      - shipit_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U shipit -d shipit"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - shipit_redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  mailpit:
+    image: axllent/mailpit:latest
+    restart: unless-stopped
+    ports:
+      - "1025:1025"
+      - "8025:8025"
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-shipit}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-shipit-local-password}
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - shipit_minio_data:/data
+
+  api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.dev
+    command: sh -c "npm run db:migrate:deploy --workspace=@shipit/database && npm run dev:api"
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://shipit:${POSTGRES_PASSWORD:-shipit}@postgres:5432/shipit?schema=public
+      REDIS_URL: redis://redis:6379
+      PORT: 4000
+      MPESA_ENV: ${MPESA_ENV:-sandbox}
+      MPESA_CONSUMER_KEY: ${MPESA_CONSUMER_KEY:-}
+      MPESA_CONSUMER_SECRET: ${MPESA_CONSUMER_SECRET:-}
+      MPESA_SHORTCODE: ${MPESA_SHORTCODE:-}
+      MPESA_PASSKEY: ${MPESA_PASSKEY:-}
+      MPESA_INITIATOR_NAME: ${MPESA_INITIATOR_NAME:-}
+      MPESA_B2C_SECURITY_CREDENTIAL: ${MPESA_B2C_SECURITY_CREDENTIAL:-}
+      MPESA_CALLBACK_URL: ${MPESA_CALLBACK_URL:-}
+      MPESA_CALLBACK_TOKEN: ${MPESA_CALLBACK_TOKEN:-}
+      SHIPIT_ADMIN_EMAIL: ${SHIPIT_ADMIN_EMAIL:-admin@example.com}
+      SHIPIT_ADMIN_PASSWORD: ${SHIPIT_ADMIN_PASSWORD:-change-this-local-password}
+      SHIPIT_ADMIN_PHONE: ${SHIPIT_ADMIN_PHONE:-+254700000000}
+    ports:
+      - "4000:4000"
+    volumes:
+      - ..:/workspace
+      - shipit_node_modules:/workspace/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/api/health/ready').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+      start_period: 20s
+
+  staff-portal:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.dev
+    command: npm run dev:staff
+    restart: unless-stopped
+    environment:
+      VITE_API_PROXY_TARGET: http://api:4000
+    ports:
+      - "3000:3000"
+    volumes:
+      - ..:/workspace
+      - shipit_node_modules:/workspace/node_modules
+    depends_on:
+      api:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.dev
+    command: npm run dev:worker
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://shipit:${POSTGRES_PASSWORD:-shipit}@postgres:5432/shipit?schema=public
+      REDIS_URL: redis://redis:6379
+      SHIPIT_EVENTS_WEBHOOK_URL: ${SHIPIT_EVENTS_WEBHOOK_URL:-}
+      SHIPIT_EVENTS_WEBHOOK_TOKEN: ${SHIPIT_EVENTS_WEBHOOK_TOKEN:-}
+    volumes:
+      - ..:/workspace
+      - shipit_node_modules:/workspace/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  merchant-portal:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.dev
+    command: npm run dev:merchant
+    restart: unless-stopped
+    environment:
+      VITE_API_PROXY_TARGET: http://api:4000
+    ports:
+      - "3001:3001"
+    volumes:
+      - ..:/workspace
+      - shipit_node_modules:/workspace/node_modules
+    depends_on:
+      api:
+        condition: service_healthy
+
+  rider-pwa:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.dev
+    command: npm run dev:rider
+    restart: unless-stopped
+    environment:
+      VITE_API_PROXY_TARGET: http://api:4000
+    ports:
+      - "3002:3002"
+    volumes:
+      - ..:/workspace
+      - shipit_node_modules:/workspace/node_modules
+    depends_on:
+      api:
+        condition: service_healthy
+
+volumes:
+  shipit_postgres_data:
+  shipit_redis_data:
+  shipit_minio_data:
+  shipit_node_modules:

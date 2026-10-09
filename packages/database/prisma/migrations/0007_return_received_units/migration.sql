@@ -1,0 +1,1 @@
+ALTER TABLE "ReturnItem" ADD COLUMN "receivedUnits" INTEGER NOT NULL DEFAULT 0;
