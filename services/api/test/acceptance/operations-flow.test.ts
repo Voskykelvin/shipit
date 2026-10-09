@@ -64,6 +64,7 @@ interface RiderTasks {
   stops: Array<{
     id: string;
     orderNumber: string;
+    waybillNumber?: string;
     status: string;
     codAmountKes: number;
   }>;
@@ -502,6 +503,9 @@ test('acceptance: inbound through merchant settlement', {
   assert.equal(rto?.status, 'IN_TRANSIT');
 
   for (const stop of remainingTasks.stops) {
+    const packedOrder = packedOrders.find((order) => order.id === stop.id);
+    assert.ok(packedOrder?.waybillNumber, `Packed order ${stop.orderNumber} should have a waybill`);
+    assert.equal(stop.waybillNumber, packedOrder.waybillNumber, 'Rider stop should include its parcel-scanning barcode');
     const submission = {
       orderId: stop.id,
       riderId: rider.id,

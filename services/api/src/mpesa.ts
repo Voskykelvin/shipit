@@ -7,6 +7,7 @@ import {
   mpesaStkPushSchema,
 } from '@shipit/validation';
 import { prisma } from '@shipit/database';
+import { canAccessMerchant } from './auth.js';
 import { enqueueDomainEvent } from './jobs.js';
 import { isMatchingC2bReplay } from './mpesaHelpers.js';
 
@@ -109,6 +110,30 @@ function callbackTokenIsValid(req: Request) {
 function enqueuePaymentEvent(event: { type: string; entityId: string; merchantId: string; payload: Record<string, unknown> }) {
   void enqueueDomainEvent(event).catch((error: unknown) => console.error('Could not enqueue M-Pesa event', error));
 }
+
+mpesaPaymentRouter.get('/delivery/mpesa/stk-push/:checkoutRequestId', async (req: Request, res: Response) => {
+  try {
+    const request = await prisma.mpesaStkRequest.findUnique({
+      where: { checkoutRequestId: req.params.checkoutRequestId },
+      include: { rider: { include: { user: true } } },
+    });
+    if (
+      !request ||
+      !canAccessMerchant(req, request.merchantId) ||
+      (req.auth?.roles.has('RIDER') && request.rider.userId !== req.auth.userId)
+    ) {
+      return res.status(404).json({ error: 'M-Pesa request not found' });
+    }
+    return res.json({
+      status: request.status,
+      receiptNumber: request.status === 'SUCCEEDED' ? request.mpesaReceiptNumber : undefined,
+      resultDescription: request.status === 'FAILED' ? request.resultDescription : undefined,
+    });
+  } catch (error) {
+    console.error('Could not read M-Pesa STK status', { requestId: req.requestId, error });
+    return res.status(503).json({ error: 'M-Pesa payment status is unavailable' });
+  }
+});
 
 async function recordMpesaCollection(input: {
   orderId: string;

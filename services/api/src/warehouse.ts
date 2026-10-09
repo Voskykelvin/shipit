@@ -259,7 +259,6 @@ warehouseRouter.post('/inbound/:id/receive', async (req: Request, res: Response)
         throw new WarehouseRequestError(409, 'ASN cannot receive additional units');
       }
 
-      const receivedByItem = new Map(parsed.data.items.map((item) => [item.inboundItemId, item]));
       const nextReceived = new Map(asn.items.map((item) => [item.id, item.receivedUnits]));
       for (const receipt of parsed.data.items) {
         const item = asn.items.find((candidate) => candidate.id === receipt.inboundItemId);

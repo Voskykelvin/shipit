@@ -3,6 +3,22 @@ import { prisma } from '@shipit/database';
 
 export const trackingRouter = Router();
 
+export function publicFailureDetail(reason: string | null): string | undefined {
+  if (!reason) return undefined;
+  switch (reason) {
+    case 'CUSTOMER_UNREACHABLE':
+      return 'We could not reach you to complete this delivery attempt.';
+    case 'WRONG_LOCATION':
+      return 'We need help confirming the delivery location.';
+    case 'RESCHEDULE_REQUESTED':
+      return 'A new delivery time has been requested.';
+    case 'REFUSED_DELIVERY':
+      return 'Delivery was declined.';
+    default:
+      return 'Delivery could not be completed on this attempt.';
+  }
+}
+
 trackingRouter.get('/tracking/:trackingNumber', async (req: Request, res: Response) => {
   try {
     const waybill = await prisma.waybill.findUnique({
@@ -29,7 +45,7 @@ trackingRouter.get('/tracking/:trackingNumber', async (req: Request, res: Respon
       ...(order.manifest?.dispatchedAt ? [{ status: 'OUT_FOR_DELIVERY', occurredAt: order.manifest.dispatchedAt.toISOString() }] : []),
       ...order.deliveryAttempts.map((attempt) => ({
         status: attempt.status === 'SUCCESS' ? 'DELIVERED' : 'DELIVERY_ATTEMPT_FAILED',
-        detail: attempt.failureReason ?? undefined,
+        detail: publicFailureDetail(attempt.failureReason),
         occurredAt: attempt.attemptTimestamp.toISOString(),
       })),
       ...order.ndrCases.flatMap((record) => record.closedAt ? [{

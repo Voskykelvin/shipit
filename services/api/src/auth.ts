@@ -178,6 +178,7 @@ const permissionRules: Array<{ method: string; path: RegExp; permission: string 
   { method: 'GET', path: /^\/riders\/[^/]+\/tasks$/, permission: 'delivery.tasks' },
   { method: 'POST', path: /^\/delivery\/(?:complete|fail)$/, permission: 'delivery.execute' },
   { method: 'POST', path: /^\/delivery\/mpesa\/stk-push$/, permission: 'delivery.execute' },
+  { method: 'GET', path: /^\/delivery\/mpesa\/stk-push\/[^/]+$/, permission: 'delivery.execute' },
   { method: 'GET', path: /^\/ndr$/, permission: 'ndr.view' },
   { method: 'POST', path: /^\/ndr\/[^/]+\/resolve$/, permission: 'ndr.resolve' },
   { method: 'GET', path: /^\/returns(?:\/[^/]+)?$/, permission: 'return.view' },

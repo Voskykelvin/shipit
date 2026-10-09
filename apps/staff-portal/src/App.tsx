@@ -315,7 +315,7 @@ export default function App() {
     }
   }
 
-  async function markPicked(event: React.FormEvent<HTMLFormElement>, wave: PickWave, task: PickTask) {
+  async function markPicked(event: React.FormEvent<HTMLFormElement>, task: PickTask) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     await perform(() => api.request('/fulfillment/pick', {
@@ -687,7 +687,7 @@ export default function App() {
                 </form>
               </Panel>}
               {waves.map((wave) => <Panel key={wave.id} title={`${wave.waveNumber} · ${wave.status}`} action={<div className="header-right"><Status value={wave.status} />{wave.status === 'CREATED' && <button className="btn btn-secondary btn-sm" onClick={() => void perform(() => api.request(`/fulfillment/waves/${encodeURIComponent(wave.id)}/start`, { method: 'POST' }), 'Pick wave started.')}>Start wave</button>}{wave.status === 'IN_PROGRESS' && wave.confirmedTaskCount === wave.taskCount && <button className="btn btn-primary btn-sm" onClick={() => void perform(() => api.request(`/fulfillment/waves/${encodeURIComponent(wave.id)}/complete`, { method: 'POST' }), 'Pick wave completed.')}>Complete wave</button>}</div>}>
-                <div className="task-list">{wave.tasks.map((task) => <div className={`pick-task ${task.isConfirmed ? 'confirmed' : ''}`} key={task.id}><div className="task-location"><span>Pick location</span><code>{task.location.barcode}</code></div><div className="task-detail"><strong>{task.sku} · {task.productName}</strong><span>{task.orderNumber} · {task.quantity} units</span><code>Product barcode: {task.barcode}</code></div>{task.isConfirmed ? <Status value="PICKED" /> : wave.status === 'IN_PROGRESS' ? <form className="pick-task-form" onSubmit={(event) => void markPicked(event, wave, task)}><input name="scannedBarcode" placeholder="Scan product barcode" autoComplete="off" required /><input name="quantity" type="number" min="1" max={task.quantity - task.pickedQuantity} defaultValue={task.quantity - task.pickedQuantity} required /><button className="btn btn-primary btn-sm" disabled={busy}>Confirm pick</button></form> : <Status value="WAITING" />}</div>)}</div>
+                <div className="task-list">{wave.tasks.map((task) => <div className={`pick-task ${task.isConfirmed ? 'confirmed' : ''}`} key={task.id}><div className="task-location"><span>Pick location</span><code>{task.location.barcode}</code></div><div className="task-detail"><strong>{task.sku} · {task.productName}</strong><span>{task.orderNumber} · {task.quantity} units</span><code>Product barcode: {task.barcode}</code></div>{task.isConfirmed ? <Status value="PICKED" /> : wave.status === 'IN_PROGRESS' ? <form className="pick-task-form" onSubmit={(event) => void markPicked(event, task)}><input name="scannedBarcode" placeholder="Scan product barcode" autoComplete="off" required /><input name="quantity" type="number" min="1" max={task.quantity - task.pickedQuantity} defaultValue={task.quantity - task.pickedQuantity} required /><button className="btn btn-primary btn-sm" disabled={busy}>Confirm pick</button></form> : <Status value="WAITING" />}</div>)}</div>
               </Panel>)}
               {can('inventory.pack') && <Panel title="Pack picked orders"><OrderTable orders={orders.filter((order) => order.status === 'PICKING')} can={can} onVerify={verifyOrder} onCancel={cancelOrder} onPack={packOrder} /></Panel>}
             </>

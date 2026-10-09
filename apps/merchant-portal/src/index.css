@@ -675,11 +675,217 @@ button:disabled {
   flex: 0 0 auto;
 }
 
+.tracking-link {
+  display: inline-block;
+  margin-right: 0.55rem;
+}
+
+.public-tracking {
+  min-height: 100vh;
+  background:
+    radial-gradient(ellipse at 50% -15%, rgba(16, 185, 129, 0.16), transparent 50%),
+    var(--bg-main);
+}
+
+.public-tracking-brand {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 1.1rem 1.5rem;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.tracking-brand-mark,
+.tracking-parcel-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: #fff;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.public-tracking-brand > div {
+  display: grid;
+  gap: 0.08rem;
+}
+
+.public-tracking-brand > div strong {
+  font-size: 0.95rem;
+}
+
+.public-tracking-brand > div span {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+
+.tracking-merchant-link {
+  margin-left: auto;
+  color: #6ee7b7;
+  font-size: 0.8rem;
+  text-decoration: none;
+}
+
+.tracking-merchant-link:hover,
+.tracking-brand-mark:hover {
+  filter: brightness(1.12);
+}
+
+.public-tracking-content {
+  display: grid;
+  gap: 1.5rem;
+  width: min(100% - 2rem, 680px);
+  margin: 0 auto;
+  padding: clamp(2.5rem, 8vw, 5rem) 0;
+}
+
+.tracking-intro {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.tracking-eyebrow {
+  color: #6ee7b7;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+}
+
+.tracking-intro h1 {
+  font-size: clamp(2rem, 7vw, 3.2rem);
+  line-height: 1.1;
+  letter-spacing: -0.04em;
+}
+
+.tracking-intro p {
+  color: var(--text-muted);
+  font-size: 0.92rem;
+}
+
+.tracking-search-card,
+.public-tracking-result {
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  background: rgba(15, 23, 42, 0.9);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.18);
+}
+
+.tracking-search-card {
+  display: grid;
+  gap: 0.55rem;
+  padding: 1.1rem;
+}
+
+.tracking-search-card > label {
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.tracking-search-row {
+  display: flex;
+  gap: 0.65rem;
+}
+
+.tracking-search-row input {
+  flex: 1;
+  min-width: 0;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  background: var(--bg-input);
+  color: var(--text-main);
+  font: 600 0.86rem var(--font-mono);
+}
+
+.tracking-search-row input:focus {
+  outline: 2px solid rgba(16, 185, 129, 0.55);
+}
+
+.tracking-search-row button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.75rem 0.95rem;
+  border: 0;
+  border-radius: var(--radius-md);
+  background: #059669;
+  color: #fff;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.tracking-search-row button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.tracking-error {
+  color: #fca5a5;
+  font-size: 0.78rem;
+}
+
+.public-tracking-result {
+  padding: 1.1rem;
+}
+
+.tracking-result-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.tracking-result-heading > div:nth-child(2) {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
+.tracking-result-heading > div:nth-child(2) span,
+.public-destination span {
+  color: var(--text-faint);
+  font-size: 0.67rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+}
+
+.tracking-result-heading > div:nth-child(2) strong {
+  overflow-wrap: anywhere;
+  font: 700 0.88rem var(--font-mono);
+}
+
+.tracking-result-heading .status-badge {
+  margin-left: auto;
+  white-space: nowrap;
+}
+
+.public-destination {
+  display: grid;
+  gap: 0.25rem;
+  padding-top: 1rem;
+}
+
+.tracking-privacy {
+  margin-top: 1.25rem;
+  padding-top: 0.85rem;
+  border-top: 1px solid var(--border-subtle);
+  color: var(--text-faint);
+  font-size: 0.72rem;
+}
+
 @media (max-width: 900px) {
   .merchant-sidebar {
     width: 205px;
   }
-
   .split-grid {
     grid-template-columns: 1fr;
   }
@@ -747,5 +953,24 @@ button:disabled {
 
   .welcome-row {
     align-items: flex-start;
+  }
+}
+
+@media (max-width: 520px) {
+  .public-tracking-brand {
+    padding: 0.9rem 1rem;
+  }
+
+  .tracking-search-row {
+    flex-direction: column;
+  }
+
+  .tracking-result-heading {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .tracking-result-heading .status-badge {
+    margin-left: 3.1rem;
   }
 }

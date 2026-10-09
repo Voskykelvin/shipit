@@ -98,6 +98,7 @@ deliveryRouter.get('/riders/:id/tasks', async (req: Request, res: Response) => {
     const stops = manifests.flatMap((manifest) => manifest.orders.map((order) => ({
       id: order.id,
       orderNumber: order.orderNumber,
+      waybillNumber: order.waybillNumber ?? undefined,
       customerName: order.customerName,
       phone: order.customerPhone,
       area: `${order.townOrSubCounty}, ${order.estateOrArea}`,
@@ -237,6 +238,14 @@ deliveryRouter.post('/delivery/complete', async (req: Request, res: Response) =>
               where: { paymentChannel: parsed.data.paymentChannel, mpesaReceiptNumber: receiptNumber },
             })
           : null;
+        if (parsed.data.paymentChannel === 'MPESA_STK' && (
+          !existingPayment ||
+          existingPayment.orderId !== existingOrder.id ||
+          existingPayment.amountCollectedKes !== parsed.data.amountCollectedKes ||
+          existingPayment.riderId !== rider.id
+        )) {
+          throw new DeliveryRequestError(409, 'M-Pesa STK payment has not been confirmed for this delivery');
+        }
         if (existingPayment && (existingPayment.orderId !== existingOrder.id || existingPayment.amountCollectedKes !== parsed.data.amountCollectedKes)) {
           throw new DeliveryRequestError(409, 'M-Pesa receipt is already associated with another payment');
         }

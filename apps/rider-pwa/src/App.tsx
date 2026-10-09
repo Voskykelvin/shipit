@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { api, type AuthSession } from '@shipit/api-client';
-import { Camera, CheckCircle2, Eraser, LogOut, MapPin, MessageSquare, Navigation, PenLine, Phone, RefreshCw, Upload, Wifi, WifiOff, XCircle } from 'lucide-react';
+import { Camera, CheckCircle2, Eraser, LogOut, MapPin, MessageSquare, Navigation, PenLine, Phone, RefreshCw, ScanLine, Upload, Wifi, WifiOff, XCircle } from 'lucide-react';
 import {
   deleteQueuedPod,
   listQueuedPods,
@@ -14,6 +14,7 @@ import {
 interface DeliveryStop {
   id: string;
   orderNumber: string;
+  waybillNumber?: string;
   customerName: string;
   phone: string;
   area: string;
@@ -22,6 +23,104 @@ interface DeliveryStop {
   codAmountKes: number;
   paymentMethod: 'COD_MPESA' | 'COD_CASH' | 'PREPAID';
   status: 'PENDING' | 'FAILED';
+}
+
+interface BarcodeDetectorResult {
+  rawValue: string;
+}
+
+interface BarcodeDetectorInstance {
+  detect(source: HTMLVideoElement): Promise<BarcodeDetectorResult[]>;
+}
+
+interface BarcodeDetectorConstructor {
+  new (options: { formats: string[] }): BarcodeDetectorInstance;
+  getSupportedFormats(): Promise<string[]>;
+}
+
+function ParcelCameraScanner({ onScan }: { onScan: (value: string) => void }) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const [scannerError, setScannerError] = useState('');
+
+  useEffect(() => {
+    let stopped = false;
+    let scanning = false;
+    let timeout: number | undefined;
+    let stream: MediaStream | undefined;
+
+    async function startScanner() {
+      const Detector = (window as Window & { BarcodeDetector?: BarcodeDetectorConstructor }).BarcodeDetector;
+      if (!Detector) {
+        setScannerError('Camera scanning is not supported here. Use a handheld scanner or enter the waybill barcode.');
+        return;
+      }
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setScannerError('Camera access is unavailable. Use a handheld scanner or enter the waybill barcode.');
+        return;
+      }
+
+      const supportedFormats = await Detector.getSupportedFormats();
+      const formats = ['code_128', 'qr_code'].filter((format) => supportedFormats.includes(format));
+      if (!formats.length) {
+        setScannerError('This camera cannot read Ship It waybills. Use a handheld scanner or enter the barcode.');
+        return;
+      }
+
+      stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: { facingMode: { ideal: 'environment' } },
+      });
+      const video = videoRef.current;
+      if (!video || stopped) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
+      video.srcObject = stream;
+      await video.play();
+      const detector = new Detector({ formats });
+
+      const detect = async () => {
+        if (stopped || scanning) return;
+        scanning = true;
+        try {
+          const [result] = await detector.detect(video);
+          if (result) {
+            onScan(result.rawValue);
+            return;
+          }
+        } catch {
+          setScannerError('Could not read a barcode. Adjust the camera and try again, or enter it manually.');
+          return;
+        } finally {
+          scanning = false;
+        }
+        if (!stopped) timeout = window.setTimeout(() => void detect(), 250);
+      };
+      void detect();
+    }
+
+    void startScanner().catch((cause: unknown) => {
+      if (!stopped) {
+        setScannerError(cause instanceof Error
+          ? `Camera could not start: ${cause.message}`
+          : 'Camera could not start. Check camera permissions or enter the barcode manually.');
+      }
+    });
+
+    return () => {
+      stopped = true;
+      if (timeout !== undefined) window.clearTimeout(timeout);
+      stream?.getTracks().forEach((track) => track.stop());
+      if (videoRef.current) videoRef.current.srcObject = null;
+    };
+  }, [onScan]);
+
+  return (
+    <div className="barcode-scanner">
+      <video ref={videoRef} muted playsInline aria-label="Camera barcode scanner" />
+      <p role="status">{scannerError || 'Point the rear camera at the parcel waybill barcode.'}</p>
+    </div>
+  );
 }
 
 interface RiderTasks {
@@ -142,6 +241,12 @@ export default function App() {
   const [signatureUrl, setSignatureUrl] = useState('');
   const [photoUrl, setPhotoUrl] = useState('');
   const [gps, setGps] = useState<{ lat: number; lng: number }>();
+  const [scannedCode, setScannedCode] = useState('');
+  const [verifiedStopId, setVerifiedStopId] = useState('');
+  const [cameraScanning, setCameraScanning] = useState(false);
+  const [stkStatus, setStkStatus] = useState<'IDLE' | 'INITIATED' | 'SUCCEEDED' | 'FAILED'>('IDLE');
+  const [stkStatusMessage, setStkStatusMessage] = useState('');
+  const [stkPollingPaused, setStkPollingPaused] = useState(false);
   const syncing = useRef(false);
 
   const loadTasks = useCallback(async () => {
@@ -265,8 +370,15 @@ export default function App() {
         '/delivery/mpesa/stk-push',
         { method: 'POST', body: { orderId: stop.id, riderId: tasks.rider.id } },
       );
-      const requestId = response.checkoutRequestId ?? '';
+      if (!response.checkoutRequestId) {
+        throw new Error('M-Pesa accepted the request without returning a payment ID. Confirm the customer’s payment before retrying.');
+      }
+      const requestId = response.checkoutRequestId;
       setStkRequest(requestId);
+      setReceiptNumber('');
+      setStkStatus('INITIATED');
+      setStkStatusMessage(response.message ?? 'Waiting for Safaricom to confirm payment.');
+      setStkPollingPaused(false);
       setNotice(response.message ?? 'M-Pesa payment prompt submitted.');
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'M-Pesa prompt could not be sent.');
@@ -274,6 +386,80 @@ export default function App() {
       setBusy(false);
     }
   }
+
+  async function checkStkStatus(requestId = stkRequest) {
+    if (!requestId) return;
+    try {
+      const response = await api.request<{
+        status: 'INITIATED' | 'SUCCEEDED' | 'FAILED';
+        receiptNumber?: string;
+        resultDescription?: string;
+      }>(`/delivery/mpesa/stk-push/${encodeURIComponent(requestId)}`);
+      setStkStatus(response.status);
+      setStkStatusMessage(response.status === 'SUCCEEDED'
+        ? 'Payment confirmed by Safaricom.'
+        : response.status === 'FAILED'
+          ? response.resultDescription ?? 'Safaricom could not confirm this payment.'
+          : 'Waiting for Safaricom to confirm payment.');
+      setStkPollingPaused(response.status !== 'INITIATED');
+      if (response.status === 'SUCCEEDED' && response.receiptNumber) {
+        setReceiptNumber(response.receiptNumber);
+        setError('');
+        setNotice('M-Pesa payment confirmed by Safaricom.');
+      } else if (response.status === 'FAILED') {
+        setError(response.resultDescription ?? 'Safaricom could not confirm this payment. Send a new prompt or choose another payment method.');
+      }
+    } catch (cause) {
+      setError(`Could not check M-Pesa payment status: ${cause instanceof Error ? cause.message : 'payment service unavailable'}`);
+    }
+  }
+
+  useEffect(() => {
+    if (!online || !stkRequest || stkStatus !== 'INITIATED' || stkPollingPaused) return;
+    let attempts = 0;
+    let checking = false;
+    let cancelled = false;
+    const poll = async () => {
+      if (checking || cancelled) return;
+      checking = true;
+      try {
+        const response = await api.request<{
+          status: 'INITIATED' | 'SUCCEEDED' | 'FAILED';
+          receiptNumber?: string;
+          resultDescription?: string;
+        }>(`/delivery/mpesa/stk-push/${encodeURIComponent(stkRequest)}`);
+        if (cancelled) return;
+        setStkStatus(response.status);
+        setStkStatusMessage(response.status === 'SUCCEEDED'
+          ? 'Payment confirmed by Safaricom.'
+          : response.status === 'FAILED'
+            ? response.resultDescription ?? 'Safaricom could not confirm this payment.'
+            : 'Waiting for Safaricom to confirm payment.');
+        if (response.status === 'SUCCEEDED' && response.receiptNumber) {
+          setReceiptNumber(response.receiptNumber);
+          setError('');
+          setNotice('M-Pesa payment confirmed by Safaricom.');
+        } else if (response.status === 'FAILED') {
+          setError(response.resultDescription ?? 'Safaricom could not confirm this payment. Send a new prompt or choose another payment method.');
+        } else if (++attempts >= 15) {
+          setStkPollingPaused(true);
+          setStkStatusMessage('Still awaiting confirmation. Check again before recording delivery.');
+        }
+      } catch (cause) {
+        if (!cancelled) {
+          setError(`Could not check M-Pesa payment status: ${cause instanceof Error ? cause.message : 'payment service unavailable'}`);
+        }
+      } finally {
+        checking = false;
+      }
+    };
+    void poll();
+    const interval = window.setInterval(() => void poll(), 4000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [online, stkPollingPaused, stkRequest, stkStatus]);
 
   async function queuePod(payload: PodSubmission) {
     if (!session) return;
@@ -334,13 +520,14 @@ export default function App() {
   async function completeDelivery(event: React.FormEvent<HTMLFormElement>, stop: DeliveryStop) {
     event.preventDefault();
     if (!tasks || !session) return;
+    if (verifiedStopId !== stop.id) {
+      setError('Scan and verify this parcel’s waybill before recording delivery.');
+      return;
+    }
     if (!online && tasks && cachedTasksAt && Date.now() - new Date(cachedTasksAt).getTime() > 24 * 60 * 60 * 1000) {
       setError('Saved stop data is more than 24 hours old. Reconnect and refresh before recording a delivery.');
       return;
     }
-    setBusy(true);
-    setError('');
-    setNotice('');
     const selectedPaymentChannel = stop.paymentMethod === 'PREPAID'
       ? 'PREPAID'
       : stop.paymentMethod === 'COD_CASH'
@@ -349,9 +536,15 @@ export default function App() {
     const isMpesa = selectedPaymentChannel === 'MPESA_STK';
     if (isMpesa && !online) {
       setError('M-Pesa payment cannot be verified offline. Confirm payment online before recording delivery.');
-      setBusy(false);
       return;
     }
+    if (isMpesa && stkStatus !== 'SUCCEEDED') {
+      setError('Wait for Safaricom to confirm M-Pesa payment before recording delivery.');
+      return;
+    }
+    setBusy(true);
+    setError('');
+    setNotice('');
     const payload: PodSubmission = {
       orderId: stop.id,
       riderId: tasks.rider.id,
@@ -427,6 +620,42 @@ export default function App() {
     setSignatureUrl('');
     setPhotoUrl('');
     setGps(undefined);
+    setScannedCode('');
+    setVerifiedStopId('');
+    setCameraScanning(false);
+    setStkStatus('IDLE');
+    setStkStatusMessage('');
+    setStkPollingPaused(false);
+  }
+
+  const onBarcodeDetected = useCallback((value: string) => {
+    setScannedCode(value);
+    setVerifiedStopId('');
+    setCameraScanning(false);
+  }, []);
+
+  function verifyParcelBarcode(stop: DeliveryStop) {
+    const rawValue = scannedCode.trim();
+    let scannedValue = rawValue;
+    try {
+      const payload: unknown = JSON.parse(rawValue);
+      if (typeof payload === 'object' && payload !== null && 'trackingNumber' in payload &&
+        typeof payload.trackingNumber === 'string') {
+        scannedValue = payload.trackingNumber;
+      }
+    } catch {
+      // Code 128 waybills contain a plain tracking number.
+    }
+
+    const acceptedCodes = [stop.waybillNumber, stop.orderNumber].filter((code): code is string => !!code);
+    if (acceptedCodes.some((code) => code.toLowerCase() === scannedValue.toLowerCase())) {
+      setVerifiedStopId(stop.id);
+      setError('');
+      setNotice(`${stop.orderNumber} parcel barcode verified.`);
+      return;
+    }
+    setVerifiedStopId('');
+    setError('That barcode does not match this delivery stop. Check the waybill and scan again.');
   }
 
   async function reportFailure(stop: DeliveryStop) {
@@ -467,7 +696,6 @@ export default function App() {
     );
   }
 
-  const activeStop = tasks?.stops.find((stop) => stop.id === activeStopId);
   const pendingStops = tasks?.stops.filter((stop) => stop.status === 'PENDING') ?? [];
 
   return (
@@ -481,8 +709,8 @@ export default function App() {
           </div>
         </div>
         <div className="header-actions">
-          <button className="icon-button" onClick={() => void loadTasks()} title="Refresh tasks" disabled={busy}><RefreshCw size={17} /></button>
-          <button className="icon-button" onClick={() => void handleLogout()} title="Sign out"><LogOut size={17} /></button>
+          <button className="icon-button" onClick={() => void loadTasks()} title="Refresh tasks" aria-label="Refresh assigned stops" disabled={busy}><RefreshCw size={17} /></button>
+          <button className="icon-button" onClick={() => void handleLogout()} title="Sign out" aria-label="Sign out"><LogOut size={17} /></button>
         </div>
       </header>
 
@@ -532,6 +760,26 @@ export default function App() {
                       </div>
                       <form className="r-form delivery-form" onSubmit={(event) => void completeDelivery(event, stop)}>
                         <h3>Proof of delivery</h3>
+                        <section className="barcode-check" aria-label="Parcel barcode verification">
+                          <label>Waybill barcode<input value={scannedCode} onChange={(event) => {
+                            setScannedCode(event.target.value);
+                            setVerifiedStopId('');
+                          }} placeholder={stop.waybillNumber ?? stop.orderNumber} autoComplete="off" autoCapitalize="characters" /></label>
+                          <div className="barcode-actions">
+                            <button type="button" className="r-btn r-btn-maps" onClick={() => setCameraScanning((open) => !open)}>
+                              <ScanLine size={15} /> {cameraScanning ? 'Close camera' : 'Scan with camera'}
+                            </button>
+                            <button type="button" className="r-btn r-btn-wa" onClick={() => verifyParcelBarcode(stop)} disabled={!scannedCode.trim()}>
+                              Verify parcel
+                            </button>
+                          </div>
+                          {cameraScanning && <ParcelCameraScanner onScan={onBarcodeDetected} />}
+                          <p className={verifiedStopId === stop.id ? 'barcode-verified' : 'r-muted'} role="status">
+                            {verifiedStopId === stop.id
+                              ? 'Parcel verified. You can record proof of delivery.'
+                              : 'Scan the waybill label or use a handheld scanner before delivery.'}
+                          </p>
+                        </section>
                         <label>Recipient name<input value={recipientName} onChange={(event) => setRecipientName(event.target.value)} required minLength={2} /></label>
                         <label>Payment channel
                           <select value={stop.paymentMethod === 'PREPAID' ? 'PREPAID' : stop.paymentMethod === 'COD_CASH' ? 'CASH' : paymentChannel} onChange={(event) => setPaymentChannel(event.target.value as 'CASH' | 'MPESA_STK')}>
@@ -543,15 +791,27 @@ export default function App() {
                             <button type="button" className="r-btn r-btn-wa" onClick={() => void sendStkPrompt(stop)} disabled={busy}>
                               {busy ? 'Sending…' : 'Send M-Pesa STK prompt'}
                             </button>
-                            {stkRequest && <p className="r-muted">Request {stkRequest} sent. Confirm payment with the customer, then enter the receipt below.</p>}
-                            <label>M-Pesa receipt number<input value={receiptNumber} onChange={(event) => setReceiptNumber(event.target.value)} required /></label>
+                            {stkRequest && (
+                              <div className="payment-status" role="status">
+                                <p>{stkStatusMessage || 'Waiting for Safaricom to confirm payment.'}</p>
+                                {stkStatus === 'INITIATED' && (
+                                  <button type="button" className="r-btn r-btn-maps" onClick={() => {
+                                    setStkPollingPaused(false);
+                                    void checkStkStatus();
+                                  }} disabled={!online || busy}>
+                                    Check payment status
+                                  </button>
+                                )}
+                              </div>
+                            )}
+                            <label>M-Pesa receipt number<input value={receiptNumber} readOnly={stkStatus === 'SUCCEEDED'} required /></label>
                           </>
                         )}
                         <SignaturePad value={signatureUrl} onChange={setSignatureUrl} />
                         <label className="photo-picker"><span><Camera size={15} /> Parcel photo (optional)</span><input type="file" accept="image/*" capture="environment" onChange={(event) => void capturePhoto(event.target.files?.[0])} /></label>
                         {photoUrl && <img className="pod-photo-preview" src={photoUrl} alt="Captured parcel proof" />}
                         <button type="button" className="r-btn r-btn-maps" onClick={captureLocation}><MapPin size={15} /> {gps ? `Location captured (${gps.lat.toFixed(5)}, ${gps.lng.toFixed(5)})` : 'Capture delivery location'}</button>
-                        <button type="submit" className="r-btn r-btn-deliver" disabled={busy}><CheckCircle2 size={18} /> Record delivery</button>
+                        <button type="submit" className="r-btn r-btn-deliver" disabled={busy || verifiedStopId !== stop.id || (stop.paymentMethod === 'COD_MPESA' && stkStatus !== 'SUCCEEDED')}><CheckCircle2 size={18} /> Record delivery</button>
                       </form>
                       {failedStopId === stop.id ? (
                         <div className="r-form">

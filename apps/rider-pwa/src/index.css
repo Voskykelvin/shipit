@@ -507,6 +507,64 @@ button:disabled {
   font-size: 0.95rem;
 }
 
+.barcode-check,
+.payment-status {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: rgba(19, 28, 46, 0.72);
+}
+
+.barcode-check label {
+  display: grid;
+  gap: 0.35rem;
+  color: var(--text-muted);
+  font-size: 0.74rem;
+}
+
+.barcode-check input {
+  min-width: 0;
+  padding: 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #0b1322;
+  color: var(--text-main);
+}
+
+.barcode-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+}
+
+.barcode-verified {
+  color: #6ee7b7;
+  font-size: 0.76rem;
+}
+
+.barcode-scanner {
+  display: grid;
+  gap: 0.4rem;
+  color: var(--text-muted);
+  font-size: 0.74rem;
+}
+
+.barcode-scanner video {
+  width: 100%;
+  max-height: 260px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #000;
+  object-fit: cover;
+}
+
+.payment-status p {
+  color: var(--text-muted);
+  font-size: 0.76rem;
+}
+
 .r-stats-bar {
   margin: 0;
 }
@@ -521,6 +579,10 @@ button:disabled {
 
 @media (max-width: 360px) {
   .rider-action-row {
+    grid-template-columns: 1fr;
+  }
+
+  .barcode-actions {
     grid-template-columns: 1fr;
   }
 }

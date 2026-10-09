@@ -40,7 +40,7 @@ To ensure commercial feasibility and operational velocity, the feature set is st
 | **Kafka Event Streams** | Premature infrastructure overhead for current order volumes. Handled cleanly with PostgreSQL + Redis/BullMQ. | Phase 3 |
 | **AI Demand & RTO Forecasting** | Requires historical baseline data to train. Rules-based address/customer verification provides 90% of the value immediately. | Phase 3 |
 | **Dynamic AI Route Optimization** | Impractical for unstructured Nairobi suburban addressing; simple zoned route manifests and Google Maps navigation are significantly more reliable. | Phase 2 / Phase 3 |
-| **Native Mobile Apps (iOS/Android)** | App store deployment friction, multi-platform overhead, update lag. PWA solves camera barcode scanning, offline caching, and responsive workflows. | Phase 2 |
+| **Native Mobile Apps (iOS/Android)** | Avoids app-store deployment friction and multi-platform overhead. The current PWA supports offline task caching and queued proof-of-delivery capture; in-app barcode scanning remains a gap. | Phase 2 |
 | **Automated Shopify / WooCommerce Plugins** | Adds external dependency risk during warehouse loop testing. High-speed CSV and bulk API imports come first. | Phase 2 (Weeks 13–16) |
 | **Full General Ledger / Double-Entry ERP** | Ship It is a fulfillment engine, not an accounting suite. Replaced by a dedicated **Fulfillment Financial Ledger** (COD, fees, rate cards, merchant balances). | Native export to ERP in Phase 3 |
 | **Value-Added Studio Services (Photography, etc.)** | Distracts from core logistics operational efficiency. | Dropped entirely |
@@ -348,18 +348,18 @@ The current clients are React/Vite applications backed by the authenticated Expr
 | Inbound warehouse lookup, ASN creation and receiving | Merchant: Inventory & inbound; Staff: WMS & inbound | Merchant ASN scheduling and staff receipt with received/damaged quantities. Staff actions are permission-gated. |
 | Pick waves, task confirmation and packing | Staff: Pick & pack | Wave lifecycle, barcode-confirmed picking and order packing. |
 | Routes, manifests, route scans and custody handover | Staff: Dispatch | Staged manifest creation, route validation, parcel scans and permitted handover. |
-| Rider task lookup, delivery completion/failure, M-Pesa STK initiation | Rider: assigned stops | Riders fetch their own tasks, contact/navigate to recipients, initiate STK, submit delivery/POD details, or report failure. |
+| Rider task lookup, parcel barcode verification, delivery completion/failure, M-Pesa STK initiation/status | Rider: assigned stops | Riders scan or enter the parcel waybill, contact/navigate to recipients, initiate STK, wait for callback-confirmed payment, submit delivery/POD details, or report failure. |
 | NDR case resolution | Staff: NDR exceptions | Permitted users retry delivery or route a parcel to RTO. |
 | Return creation, receiving and inspection | Staff: Returns | Staff with matching permissions create returns, enter actual received quantities and quarantine locations, and select condition grades and disposition actions. |
 | Rider shift reconciliation, cash-variance approval, merchant ledgers and settlement lifecycle | Merchant: Finance; Staff: Finance | Merchants view ledger/settlement history and request settlements. Staff reconcile shifts; operations managers and super admins review and approve cash variances with an explicit reason. Authorized finance staff create, approve or disburse/mark settlements. |
 | Merchant, merchant-user, product and rider provisioning | Staff: Merchants & fleet | Onboarding and catalog/rider setup are available to users with the matching permissions. |
-| Public shipment tracking | Merchant portal: Public tracking tab | Uses unauthenticated `/tracking/:trackingNumber`; a standalone marketing/public website is not present. |
+| Public shipment tracking | Public `/track?waybill=…` page; merchant order links | Shareable tracking links use unauthenticated `/tracking/:trackingNumber`; a broader standalone marketing website is not present. |
 | M-Pesa callbacks, B2C result callbacks and background domain jobs | API/webhook and worker processes | Backend integrations execute without an operator-facing callback-monitoring screen. |
 
 ### 6.1 Current Client Limits (Not Yet Implemented)
-- There is no separate public marketing website.
-- The rider app does not currently provide offline task caching, camera barcode scanning, signature capture, or photo upload.
-- STK initiation is asynchronous; the rider app does not poll callback state. The rider enters the customer-confirmed M-Pesa receipt before completing a delivery.
+- There is no broader public marketing website beyond the standalone parcel-tracking page.
+- The rider app scans Code 128/QR waybills on supported cameras and provides manual/handheld-scanner entry as a fallback. It caches assigned tasks and queues cash/prepaid proof-of-delivery submissions offline, with signature capture and compressed photo upload.
+- STK initiation is asynchronous; the rider app polls for callback confirmation and receives the confirmed receipt. The API rejects STK proof of delivery unless the matching order, amount, rider, and receipt were confirmed by the callback.
 - The staff finance UI does not provide a dedicated M-Pesa callback reconciliation console or rate-card builder.
 - Control-tower and portal views are API-backed, but no live database/API end-to-end browser test is implied by a successful compile.
 
@@ -477,7 +477,7 @@ npm run test:acceptance --workspace=@shipit/api
 The test creates persistent merchant, rider, order, inventory, and finance records; it does not clean them up. It rejects non-local API URLs unless `SHIPIT_ACCEPTANCE_ALLOW_REMOTE=true` is explicitly set. Only use that override with a dedicated, disposable staging environment. This first batch verifies the cash-COD flow and does not call Safaricom; Daraja callback and payout sandbox testing remains a separate batch.
 
 ### 10.2 Rider PWA offline batch 2
-The rider PWA caches its app shell and last successfully loaded stop list, and stores offline cash/prepaid POD submissions with captured signature, parcel photo, and optional GPS in browser IndexedDB. Saved PODs are scoped to the signed-in rider account and sync in order when connectivity returns. A database-backed submission ID makes retries idempotent. M-Pesa STK prompts and failed-attempt reports remain online-only; the device must stay available until queued PODs sync. Apply migration `0010_pod_submission_id` before deploying the API and regenerate the Prisma client. Local browser storage is not encrypted, so only use offline mode on managed, screen-locked devices.
+The rider PWA caches its app shell and last successfully loaded stop list, and stores offline cash/prepaid POD submissions with captured signature, parcel photo, and optional GPS in browser IndexedDB. Saved PODs are scoped to the signed-in rider account and sync in order when connectivity returns. A database-backed submission ID makes retries idempotent. Barcode verification uses Code 128/QR camera support where available, with manual or handheld scanner fallback. M-Pesa STK prompts/status and failed-attempt reports remain online-only; STK delivery completion requires a successful Safaricom callback. The device must stay available until queued PODs sync. Apply migration `0010_pod_submission_id` before deploying the API and regenerate the Prisma client. Local browser storage is not encrypted, so only use offline mode on managed, screen-locked devices.
 
 ### 10.3 Payment callback contract batch 3
 `services/api/test/mpesaCallbacks.test.ts` exercises representative STK, C2B, and B2C callback payloads plus exact C2B replay matching. Repeated C2B receipts are acknowledged only when the order, merchant, payment method, and amount all match the original transaction. These unit tests make no Safaricom calls; live/sandbox callback delivery and payout execution still require Daraja sandbox credentials, configured callback URLs, and a disposable test account.
@@ -488,13 +488,19 @@ The rider PWA caches its app shell and last successfully loaded stop list, and s
 | Gate | Current evidence | Required before go-live |
 |---|---|---|
 | Build and code checks | API typecheck/build and 10 API tests pass; rider PWA builds | Keep these checks green in the release pipeline |
+| Rider delivery workflow | Rider PWA implements barcode checks and callback-confirmed STK | Verify camera permission/unsupported-device fallback, matching and mismatching waybills, STK pending/success/failure, server rejection of unconfirmed STK, and full POD on a managed HTTPS device |
 | Rider offline shell | Production preview reloads while offline | Verify sign-in session, cached stop freshness, queued POD capture, reconnect sync, and duplicate retry on a managed HTTPS device |
 | Database and migrations | Prisma schema validates; migration `0010_pod_submission_id` is present | Take a backup, deploy all migrations, verify restore, then run the write-enabled acceptance journey against a disposable seeded environment |
-| Payment provider | STK/C2B/B2C callback shape and C2B replay unit tests pass | Execute sandbox STK collection, C2B confirmation, B2C success/failure/timeout and callback retry against Safaricom Daraja |
+| Payment provider | STK/C2B/B2C callback shape and C2B replay unit tests pass; STK POD now requires a matching confirmed callback transaction | Execute sandbox STK collection, C2B confirmation, B2C success/failure/timeout and callback retry against Safaricom Daraja |
 | Variance approval | Code path and role wiring are present | Verify seeded Operations Manager and Super Admin approve a pending variance; confirm ordinary finance users cannot approve |
 | Production operations | `docker/compose.yml` is a development stack (dev commands, source mounts, and local fallback credentials) | Choose a hosting target and provide production images, TLS/reverse proxy, secret management, restricted network exposure, monitoring/alerts, and tested backup/rollback procedures |
 
 The live acceptance journey was safely skipped in this development environment because no acceptance API URL was configured; Docker is also unavailable here. The repository currently has no production deployment stack, so do not expose the development Compose stack or treat this gate as cleared. Revisit this table with deployment and sandbox evidence before onboarding merchants.
+
+### 10.5 Production operations runbook requirements
+Before selecting a hosting provider, assign an operations owner and agree measurable recovery-point and recovery-time objectives (RPO/RTO). Configure encrypted, off-host PostgreSQL backups or point-in-time recovery with failure alerts and an explicit retention policy. Restore a recent backup into an isolated environment at least monthly, then run schema validation and the write-enabled acceptance journey there; never test restore procedures against the live database.
+
+Alert on API readiness failures, database/Redis availability, worker errors and oldest queued-job age, M-Pesa callback failures, unsettled rider variances, and payouts stuck in `INITIATED`, `ACCEPTED`, or `OUTCOME_UNKNOWN`. On a payment incident, pause affected payouts, preserve provider callback and request IDs, reconcile against provider statements, and do not manually edit ledger rows or replay non-idempotent operations. Each alert needs a named owner, severity, escalation contact, and a tested recovery action. Keep this runbook provider-specific once hosting and monitoring are chosen; those choices remain open, so production operations are not yet implementable or cleared in this repository.
 
 ---
 *Ship It — Engineering & Operations Team | Master Blueprint v1.0*
