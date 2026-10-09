@@ -1,0 +1,51 @@
+# Multi-stage production Dockerfile for Ship It Domain Event & Queue Worker
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+RUN apk add --no-cache python3 make g++
+
+COPY package.json package-lock.json ./
+COPY packages/database/package.json ./packages/database/
+COPY packages/shared-types/package.json ./packages/shared-types/
+COPY packages/validation/package.json ./packages/validation/
+COPY packages/api-client/package.json ./packages/api-client/
+COPY services/api/package.json ./services/api/
+COPY apps/staff-portal/package.json ./apps/staff-portal/
+COPY apps/merchant-portal/package.json ./apps/merchant-portal/
+COPY apps/rider-pwa/package.json ./apps/rider-pwa/
+COPY apps/website/package.json ./apps/website/
+
+RUN npm ci
+
+COPY tsconfig.base.json ./
+COPY packages/database ./packages/database
+COPY packages/shared-types ./packages/shared-types
+COPY packages/validation ./packages/validation
+COPY packages/api-client ./packages/api-client
+COPY services/api ./services/api
+
+RUN npm run db:generate --workspace=@shipit/database
+RUN npm run build --workspace=@shipit/shared-types
+RUN npm run build --workspace=@shipit/validation
+RUN npm run build --workspace=@shipit/database
+RUN npm run build --workspace=@shipit/api
+
+RUN npm prune --omit=dev
+
+FROM node:20-alpine AS runner
+
+WORKDIR /app
+
+RUN apk add --no-cache dumb-init
+ENV NODE_ENV=production
+
+USER node
+
+COPY --chown=node:node --from=builder /app/package.json ./
+COPY --chown=node:node --from=builder /app/node_modules ./node_modules
+COPY --chown=node:node --from=builder /app/packages ./packages
+COPY --chown=node:node --from=builder /app/services/api ./services/api
+
+ENTRYPOINT ["/usr/bin/dumb-init", "--"]
+CMD ["node", "services/api/dist/worker.js"]

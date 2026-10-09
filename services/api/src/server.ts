@@ -18,7 +18,9 @@ import { returnsRouter } from './returns.js';
 import { connectRedis, disconnectRedis } from './redis.js';
 import { warehouseRouter } from './warehouse.js';
 import { trackingRouter } from './tracking.js';
-import { domainEventsQueue } from './jobs.js';
+import { eventsStreamRouter } from './eventsStream.js';
+import { notificationsRouter } from './notifications.js';
+import { domainEventsQueue, enqueueDomainEvent } from './jobs.js';
 
 const app = express();
 const port = Number(process.env.PORT ?? 4000);
@@ -53,9 +55,29 @@ app.use('/api', apiRateLimit);
 app.use('/api/auth', authRouter);
 app.use('/api', mpesaWebhookRouter);
 app.use('/api', trackingRouter);
+app.post('/api/inquiries', async (req, res) => {
+  const { businessName, contactName, phone, email, category, estimatedMonthlyOrders } = req.body ?? {};
+  if (!businessName || !phone || !email) {
+    return res.status(400).json({ error: 'businessName, phone, and email are required.' });
+  }
+  try {
+    await enqueueDomainEvent({
+      type: 'merchant.inquiry_received',
+      entityId: `INQ-${Date.now()}`,
+      payload: { businessName, contactName, phone, email, category, estimatedMonthlyOrders },
+    });
+  } catch {
+    // BullMQ may be offline in test/dev
+  }
+  return res.status(201).json({
+    success: true,
+    message: 'Thank you for your inquiry. A fulfillment onboarding specialist will contact you.',
+  });
+});
 app.use('/api', authenticate);
 app.use('/api', authorizeApiRequest);
 app.use('/api', auditSuccessfulMutation);
+app.use('/api', eventsStreamRouter);
 app.use('/api', controlTowerRouter);
 app.use('/api', warehouseRouter);
 app.use('/api', ordersRouter);
@@ -66,6 +88,7 @@ app.use('/api', mpesaPaymentRouter);
 app.use('/api', financeRouter);
 app.use('/api', provisioningRouter);
 app.use('/api', returnsRouter);
+app.use('/api', notificationsRouter);
 
 app.use(notFoundMiddleware);
 app.use(errorHandler);

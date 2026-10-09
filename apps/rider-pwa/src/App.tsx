@@ -10,6 +10,9 @@ import {
   type PodSubmission,
   type QueuedPod,
 } from './offline';
+import { ParcelCameraScanner } from './components/ParcelCameraScanner';
+import { SignaturePad } from './components/SignaturePad';
+import { riderFeedback } from './utils/feedback';
 
 interface DeliveryStop {
   id: string;
@@ -25,175 +28,10 @@ interface DeliveryStop {
   status: 'PENDING' | 'FAILED';
 }
 
-interface BarcodeDetectorResult {
-  rawValue: string;
-}
-
-interface BarcodeDetectorInstance {
-  detect(source: HTMLVideoElement): Promise<BarcodeDetectorResult[]>;
-}
-
-interface BarcodeDetectorConstructor {
-  new (options: { formats: string[] }): BarcodeDetectorInstance;
-  getSupportedFormats(): Promise<string[]>;
-}
-
-function ParcelCameraScanner({ onScan }: { onScan: (value: string) => void }) {
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const [scannerError, setScannerError] = useState('');
-
-  useEffect(() => {
-    let stopped = false;
-    let scanning = false;
-    let timeout: number | undefined;
-    let stream: MediaStream | undefined;
-
-    async function startScanner() {
-      const Detector = (window as Window & { BarcodeDetector?: BarcodeDetectorConstructor }).BarcodeDetector;
-      if (!Detector) {
-        setScannerError('Camera scanning is not supported here. Use a handheld scanner or enter the waybill barcode.');
-        return;
-      }
-      if (!navigator.mediaDevices?.getUserMedia) {
-        setScannerError('Camera access is unavailable. Use a handheld scanner or enter the waybill barcode.');
-        return;
-      }
-
-      const supportedFormats = await Detector.getSupportedFormats();
-      const formats = ['code_128', 'qr_code'].filter((format) => supportedFormats.includes(format));
-      if (!formats.length) {
-        setScannerError('This camera cannot read Ship It waybills. Use a handheld scanner or enter the barcode.');
-        return;
-      }
-
-      stream = await navigator.mediaDevices.getUserMedia({
-        audio: false,
-        video: { facingMode: { ideal: 'environment' } },
-      });
-      const video = videoRef.current;
-      if (!video || stopped) {
-        stream.getTracks().forEach((track) => track.stop());
-        return;
-      }
-      video.srcObject = stream;
-      await video.play();
-      const detector = new Detector({ formats });
-
-      const detect = async () => {
-        if (stopped || scanning) return;
-        scanning = true;
-        try {
-          const [result] = await detector.detect(video);
-          if (result) {
-            onScan(result.rawValue);
-            return;
-          }
-        } catch {
-          setScannerError('Could not read a barcode. Adjust the camera and try again, or enter it manually.');
-          return;
-        } finally {
-          scanning = false;
-        }
-        if (!stopped) timeout = window.setTimeout(() => void detect(), 250);
-      };
-      void detect();
-    }
-
-    void startScanner().catch((cause: unknown) => {
-      if (!stopped) {
-        setScannerError(cause instanceof Error
-          ? `Camera could not start: ${cause.message}`
-          : 'Camera could not start. Check camera permissions or enter the barcode manually.');
-      }
-    });
-
-    return () => {
-      stopped = true;
-      if (timeout !== undefined) window.clearTimeout(timeout);
-      stream?.getTracks().forEach((track) => track.stop());
-      if (videoRef.current) videoRef.current.srcObject = null;
-    };
-  }, [onScan]);
-
-  return (
-    <div className="barcode-scanner">
-      <video ref={videoRef} muted playsInline aria-label="Camera barcode scanner" />
-      <p role="status">{scannerError || 'Point the rear camera at the parcel waybill barcode.'}</p>
-    </div>
-  );
-}
-
 interface RiderTasks {
   rider: { id: string; name: string; phoneNumber: string };
   stops: DeliveryStop[];
   totalCodExpected: number;
-}
-
-function SignaturePad({ value, onChange }: { value: string; onChange: (signature: string) => void }) {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const drawing = useRef(false);
-
-  function point(event: React.PointerEvent<HTMLCanvasElement>) {
-    const canvas = canvasRef.current!;
-    const bounds = canvas.getBoundingClientRect();
-    return {
-      x: ((event.clientX - bounds.left) / bounds.width) * canvas.width,
-      y: ((event.clientY - bounds.top) / bounds.height) * canvas.height,
-    };
-  }
-
-  function startDrawing(event: React.PointerEvent<HTMLCanvasElement>) {
-    const canvas = canvasRef.current!;
-    const context = canvas.getContext('2d');
-    if (!context) return;
-    drawing.current = true;
-    canvas.setPointerCapture(event.pointerId);
-    const position = point(event);
-    context.beginPath();
-    context.moveTo(position.x, position.y);
-  }
-
-  function draw(event: React.PointerEvent<HTMLCanvasElement>) {
-    if (!drawing.current) return;
-    const context = canvasRef.current?.getContext('2d');
-    if (!context) return;
-    const position = point(event);
-    context.lineWidth = 3;
-    context.lineCap = 'round';
-    context.strokeStyle = '#0f172a';
-    context.lineTo(position.x, position.y);
-    context.stroke();
-  }
-
-  function finishDrawing() {
-    if (!drawing.current) return;
-    drawing.current = false;
-    if (canvasRef.current) onChange(canvasRef.current.toDataURL('image/png'));
-  }
-
-  function clearSignature() {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    canvas.getContext('2d')?.clearRect(0, 0, canvas.width, canvas.height);
-    onChange('');
-  }
-
-  return (
-    <div className="signature-field">
-      <div className="signature-heading"><span><PenLine size={14} /> Recipient signature (optional)</span><button type="button" onClick={clearSignature} disabled={!value}><Eraser size={14} /> Clear</button></div>
-      <canvas
-        ref={canvasRef}
-        className="signature-pad"
-        width={600}
-        height={180}
-        aria-label="Recipient signature pad"
-        onPointerDown={startDrawing}
-        onPointerMove={draw}
-        onPointerUp={finishDrawing}
-        onPointerCancel={finishDrawing}
-      />
-    </div>
-  );
 }
 
 async function compressPhoto(file: File): Promise<string> {

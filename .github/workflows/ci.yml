@@ -1,0 +1,105 @@
+name: Ship It CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  validate-and-test:
+    name: Lint, Typecheck & Test Suite
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: shipit
+          POSTGRES_PASSWORD: shipittestpassword
+          POSTGRES_DB: shipit_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prisma Generate
+        run: npm run db:generate --workspace=@shipit/database
+
+      - name: Monorepo Typecheck
+        run: npm run typecheck
+
+      - name: Run Unit Tests
+        env:
+          DATABASE_URL: postgresql://shipit:shipittestpassword@localhost:5432/shipit_test?schema=public
+          REDIS_URL: redis://localhost:6379
+        run: npm test
+
+  build-production-artifacts:
+    name: Production Build Verification
+    runs-on: ubuntu-latest
+    needs: validate-and-test
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prisma Generate
+        run: npm run db:generate --workspace=@shipit/database
+
+      - name: Build Core Libraries
+        run: |
+          npm run build --workspace=@shipit/shared-types
+          npm run build --workspace=@shipit/validation
+          npm run build --workspace=@shipit/database
+          npm run build --workspace=@shipit/api-client
+
+      - name: Build API & Worker
+        run: npm run build --workspace=@shipit/api
+
+      - name: Build Staff Portal
+        run: npm run build --workspace=@shipit/staff-portal
+
+      - name: Build Merchant Portal
+        run: npm run build --workspace=@shipit/merchant-portal
+
+      - name: Build Rider PWA
+        run: npm run build --workspace=@shipit/rider-pwa
+
+      - name: Build Commercial Website
+        run: npm run build --workspace=@shipit/website

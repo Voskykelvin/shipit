@@ -1,0 +1,45 @@
+# Multi-stage production Dockerfile for Ship It Web Applications
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+COPY packages/database/package.json ./packages/database/
+COPY packages/shared-types/package.json ./packages/shared-types/
+COPY packages/validation/package.json ./packages/validation/
+COPY packages/api-client/package.json ./packages/api-client/
+COPY services/api/package.json ./services/api/
+COPY apps/staff-portal/package.json ./apps/staff-portal/
+COPY apps/merchant-portal/package.json ./apps/merchant-portal/
+COPY apps/rider-pwa/package.json ./apps/rider-pwa/
+COPY apps/website/package.json ./apps/website/
+
+RUN npm ci
+
+COPY tsconfig.base.json ./
+COPY packages ./packages
+COPY apps ./apps
+
+# Build shared libraries
+RUN npm run build --workspace=@shipit/shared-types
+RUN npm run build --workspace=@shipit/validation
+RUN npm run build --workspace=@shipit/api-client
+
+# Build all four frontends
+RUN npm run build --workspace=@shipit/staff-portal
+RUN npm run build --workspace=@shipit/merchant-portal
+RUN npm run build --workspace=@shipit/rider-pwa
+RUN npm run build --workspace=@shipit/website
+
+FROM nginx:1.27-alpine AS runner
+
+COPY docker/nginx.conf /etc/nginx/nginx.conf
+
+COPY --from=builder /app/apps/staff-portal/dist /usr/share/nginx/html/staff
+COPY --from=builder /app/apps/merchant-portal/dist /usr/share/nginx/html/merchant
+COPY --from=builder /app/apps/rider-pwa/dist /usr/share/nginx/html/rider
+COPY --from=builder /app/apps/website/dist /usr/share/nginx/html/website
+
+EXPOSE 80
+
+CMD ["nginx", "-g", "daemon off;"]

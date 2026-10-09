@@ -445,4 +445,237 @@ financeRouter.post('/finance/settlements/:id/paid', async (req: Request, res: Re
   }
 });
 
+financeRouter.get('/finance/mpesa/stats', async (req: Request, res: Response) => {
+  try {
+    const merchantFilter = req.auth?.merchantId ? { merchantId: req.auth.merchantId } : {};
+
+    const [stkStats, codStats, b2cStats] = await Promise.all([
+      prisma.mpesaStkRequest.findMany({
+        where: merchantFilter,
+        select: { status: true, amountKes: true },
+      }),
+      prisma.cODTransaction.findMany({
+        where: { ...merchantFilter, paymentChannel: { in: ['MPESA_STK', 'MPESA_C2B'] } },
+        select: { paymentChannel: true, amountCollectedKes: true, status: true },
+      }),
+      prisma.mpesaB2CPayout.findMany({
+        select: { status: true, settlement: { select: { netPayoutKes: true, merchantId: true } } },
+      }),
+    ]);
+
+    const totalStkCount = stkStats.length;
+    const successfulStk = stkStats.filter((s) => s.status === 'SUCCEEDED');
+    const failedStk = stkStats.filter((s) => s.status === 'FAILED');
+    const initiatedStk = stkStats.filter((s) => s.status === 'INITIATED');
+    const totalStkVolumeKes = successfulStk.reduce((acc, curr) => acc + curr.amountKes, 0);
+
+    const c2bTransactions = codStats.filter((c) => c.paymentChannel === 'MPESA_C2B');
+    const totalC2bVolumeKes = c2bTransactions.reduce((acc, curr) => acc + curr.amountCollectedKes, 0);
+
+    const relevantB2c = req.auth?.merchantId
+      ? b2cStats.filter((b) => b.settlement.merchantId === req.auth!.merchantId)
+      : b2cStats;
+    const successfulB2c = relevantB2c.filter((b) => b.status === 'SUCCEEDED');
+    const totalB2cVolumeKes = successfulB2c.reduce((acc, curr) => acc + curr.settlement.netPayoutKes, 0);
+
+    return res.json({
+      stk: {
+        totalRequests: totalStkCount,
+        succeeded: successfulStk.length,
+        failed: failedStk.length,
+        pending: initiatedStk.length,
+        totalVolumeKes: totalStkVolumeKes,
+        successRatePercent: totalStkCount > 0 ? Math.round((successfulStk.length / totalStkCount) * 100) : 100,
+      },
+      c2b: {
+        totalTransactions: c2bTransactions.length,
+        totalVolumeKes: totalC2bVolumeKes,
+      },
+      b2c: {
+        totalPayouts: relevantB2c.length,
+        succeeded: successfulB2c.length,
+        totalVolumeKes: totalB2cVolumeKes,
+      },
+      totalMobileMoneyVolumeKes: totalStkVolumeKes + totalC2bVolumeKes,
+    });
+  } catch (error) {
+    return sendFinanceError(error, res);
+  }
+});
+
+financeRouter.get('/finance/mpesa/transactions', async (req: Request, res: Response) => {
+  try {
+    const merchantFilter = req.auth?.merchantId ? { merchantId: req.auth.merchantId } : {};
+
+    const [stkRequests, codTransactions, b2cPayouts] = await Promise.all([
+      prisma.mpesaStkRequest.findMany({
+        where: merchantFilter,
+        take: 50,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          order: { select: { orderNumber: true, customerName: true, customerPhone: true } },
+          merchant: { select: { name: true } },
+          rider: { select: { user: { select: { firstName: true, lastName: true } } } },
+        },
+      }),
+      prisma.cODTransaction.findMany({
+        where: { ...merchantFilter, paymentChannel: { in: ['MPESA_STK', 'MPESA_C2B'] } },
+        take: 50,
+        orderBy: { collectedAt: 'desc' },
+        include: {
+          order: { select: { orderNumber: true, customerName: true, customerPhone: true } },
+          merchant: { select: { name: true } },
+          rider: { select: { user: { select: { firstName: true, lastName: true } } } },
+        },
+      }),
+      prisma.mpesaB2CPayout.findMany({
+        take: 50,
+        orderBy: { createdAt: 'desc' },
+        include: {
+          settlement: {
+            select: {
+              settlementNumber: true,
+              netPayoutKes: true,
+              merchantId: true,
+              merchant: { select: { name: true, mpesaB2cPhone: true } },
+            },
+          },
+        },
+      }),
+    ]);
+
+    const formattedStk = stkRequests.map((stk) => ({
+      id: stk.id,
+      channel: 'MPESA_STK',
+      direction: 'INBOUND',
+      status: stk.status,
+      receiptNumber: stk.mpesaReceiptNumber ?? stk.checkoutRequestId ?? 'PENDING',
+      amountKes: stk.amountKes,
+      orderNumber: stk.order.orderNumber,
+      customerName: stk.order.customerName,
+      customerPhone: stk.phoneNumber,
+      merchantName: stk.merchant.name,
+      riderName: stk.rider ? `${stk.rider.user.firstName} ${stk.rider.user.lastName}` : 'N/A',
+      resultDesc: stk.resultDescription,
+      timestamp: stk.createdAt.toISOString(),
+    }));
+
+    const formattedCod = codTransactions.map((cod) => ({
+      id: cod.id,
+      channel: cod.paymentChannel,
+      direction: 'INBOUND',
+      status: cod.status === 'PENDING_SETTLEMENT' ? 'SUCCEEDED' : cod.status,
+      receiptNumber: cod.mpesaReceiptNumber ?? 'MANUAL_C2B',
+      amountKes: cod.amountCollectedKes,
+      orderNumber: cod.order.orderNumber,
+      customerName: cod.order.customerName,
+      customerPhone: cod.order.customerPhone,
+      merchantName: cod.merchant.name,
+      riderName: cod.rider ? `${cod.rider.user.firstName} ${cod.rider.user.lastName}` : 'N/A',
+      resultDesc: 'Reconciled to order ledger',
+      timestamp: cod.collectedAt.toISOString(),
+    }));
+
+    const formattedB2c = b2cPayouts
+      .filter((b) => !req.auth?.merchantId || b.settlement.merchantId === req.auth.merchantId)
+      .map((b) => ({
+        id: b.id,
+        channel: 'MPESA_B2C',
+        direction: 'OUTBOUND',
+        status: b.status,
+        receiptNumber: b.payoutReference ?? b.conversationId ?? 'PENDING',
+        amountKes: b.settlement.netPayoutKes,
+        orderNumber: b.settlement.settlementNumber,
+        customerName: b.settlement.merchant.name,
+        customerPhone: b.settlement.merchant.mpesaB2cPhone ?? 'N/A',
+        merchantName: b.settlement.merchant.name,
+        riderName: 'Finance Gateway',
+        resultDesc: b.resultDescription ?? 'Settlement payout',
+        timestamp: b.createdAt.toISOString(),
+      }));
+
+    const all = [...formattedStk, ...formattedCod, ...formattedB2c].sort(
+      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime(),
+    );
+
+    return res.json({ transactions: all });
+  } catch (error) {
+    return sendFinanceError(error, res);
+  }
+});
+
+financeRouter.post('/finance/mpesa/reconcile-query', async (req: Request, res: Response) => {
+  const { orderNumber, receiptNumber, amountKes, paymentChannel } = req.body ?? {};
+  if (!orderNumber || !receiptNumber || !amountKes) {
+    return res.status(400).json({ error: 'orderNumber, receiptNumber, and amountKes are required.' });
+  }
+
+  try {
+    const order = await prisma.order.findUnique({
+      where: { orderNumber: String(orderNumber).trim() },
+      include: { manifest: true },
+    });
+
+    if (!order) {
+      return res.status(404).json({ error: `Order #${orderNumber} not found.` });
+    }
+
+    if (!canAccessMerchant(req, order.merchantId)) {
+      return res.status(403).json({ error: 'Access denied to this merchant order.' });
+    }
+
+    const receipt = String(receiptNumber).trim().toUpperCase();
+    const existing = await prisma.cODTransaction.findFirst({
+      where: { mpesaReceiptNumber: receipt },
+    });
+
+    if (existing) {
+      return res.status(409).json({
+        error: `M-Pesa receipt ${receipt} is already recorded for an order.`,
+      });
+    }
+
+    const channel = paymentChannel === 'MPESA_STK' ? 'MPESA_STK' : 'MPESA_C2B';
+    const amount = Number(amountKes);
+
+    const transaction = await prisma.cODTransaction.create({
+      data: {
+        orderId: order.id,
+        merchantId: order.merchantId,
+        riderId: order.manifest?.riderId ?? null,
+        paymentChannel: channel,
+        amountCollectedKes: amount,
+        mpesaReceiptNumber: receipt,
+        status: 'PENDING_SETTLEMENT',
+      },
+    });
+
+    // Credit merchant ledger
+    const balance = await prisma.merchantLedger.aggregate({
+      where: { merchantId: order.merchantId },
+      _sum: { amountKes: true },
+    });
+
+    await prisma.merchantLedger.create({
+      data: {
+        merchantId: order.merchantId,
+        orderId: order.id,
+        transactionType: 'COD_CREDIT',
+        amountKes: amount,
+        runningBalanceKes: (balance._sum.amountKes ?? 0) + amount,
+        description: `Manual M-Pesa ${channel} reconciliation for order ${order.orderNumber} (Receipt: ${receipt})`,
+      },
+    });
+
+    return res.status(201).json({
+      success: true,
+      message: `Receipt ${receipt} successfully reconciled to order #${order.orderNumber} for KES ${amount.toLocaleString()}.`,
+      transaction,
+    });
+  } catch (error) {
+    return sendFinanceError(error, res);
+  }
+});
+
 export { financeRouter };
+

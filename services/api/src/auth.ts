@@ -148,6 +148,7 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
 }
 
 const permissionRules: Array<{ method: string; path: RegExp; permission: string | string[] }> = [
+  { method: 'GET', path: /^\/events\/stream$/, permission: ['control_tower.view', 'order.view', 'dispatch.view', 'ndr.view', 'merchant.manage', 'rider.view', 'inventory.view'] },
   { method: 'GET', path: /^\/control-tower\/summary$/, permission: 'control_tower.view' },
   { method: 'GET', path: /^\/exceptions$/, permission: 'audit.view' },
   { method: 'GET', path: /^\/orders(?:\/[^/]+)?$/, permission: 'order.view' },
@@ -188,10 +189,14 @@ const permissionRules: Array<{ method: string; path: RegExp; permission: string 
   { method: 'POST', path: /^\/finance\/rider-shifts\/closeout$/, permission: 'finance.reconcile' },
   { method: 'POST', path: /^\/finance\/rider-shifts\/[^/]+\/approve-variance$/, permission: 'finance.variance.approve' },
   { method: 'GET', path: /^\/finance\/(?:ledgers|settlements)$/, permission: 'finance.view' },
+  { method: 'GET', path: /^\/finance\/mpesa\/(?:stats|transactions)$/, permission: 'finance.view' },
+  { method: 'POST', path: /^\/finance\/mpesa\/reconcile-query$/, permission: 'finance.reconcile' },
   { method: 'POST', path: /^\/finance\/settlements$/, permission: 'settlement.create' },
   { method: 'POST', path: /^\/finance\/settlements\/approve$/, permission: 'settlement.approve' },
   { method: 'POST', path: /^\/finance\/settlements\/[^/]+\/paid$/, permission: 'settlement.disburse' },
   { method: 'POST', path: /^\/finance\/settlements\/[^/]+\/disburse$/, permission: 'settlement.disburse' },
+  { method: 'GET', path: /^\/notifications\/log$/, permission: ['audit.view', 'order.view', 'ndr.view'] },
+  { method: 'POST', path: /^\/notifications\/send$/, permission: ['order.view', 'ndr.view', 'dispatch.view', 'merchant.manage'] },
   { method: 'GET', path: /^\/merchants$/, permission: 'merchant.manage' },
   { method: 'POST', path: /^\/merchants$/, permission: 'merchant.manage' },
   { method: 'POST', path: /^\/merchants\/[^/]+\/(?:users|activate)$/, permission: 'merchant.manage' },

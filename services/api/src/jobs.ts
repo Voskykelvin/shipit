@@ -1,5 +1,6 @@
 import { Queue } from 'bullmq';
 import { randomUUID } from 'node:crypto';
+import { EventEmitter } from 'node:events';
 import { redisConnection } from './redis.js';
 
 export interface DomainEvent {
@@ -11,6 +12,8 @@ export interface DomainEvent {
   entityId: string;
   payload: Record<string, unknown>;
 }
+
+export const domainEventEmitter = new EventEmitter();
 
 export const domainEventsQueue = new Queue<DomainEvent, void, string>('shipit-domain-events', {
   connection: redisConnection,
@@ -28,6 +31,14 @@ export async function enqueueDomainEvent(event: Omit<DomainEvent, 'eventId' | 'o
     eventId: randomUUID(),
     occurredAt: new Date().toISOString(),
   };
-  await domainEventsQueue.add(payload.type, payload, { jobId: payload.eventId });
+
+  // Broadcast to in-process subscribers (SSE stream)
+  domainEventEmitter.emit('event', payload);
+
+  try {
+    await domainEventsQueue.add(payload.type, payload, { jobId: payload.eventId });
+  } catch {
+    // If Redis is not connected during development, in-memory event broadcast still succeeds
+  }
   return payload.eventId;
 }
