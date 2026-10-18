@@ -68,7 +68,7 @@ export function Hero({ onOpenLeadModal }: HeroProps) {
               <a href="#calculator" className="btn btn-secondary btn-lg">
                 View Logistics Tariffs
               </a>
-              <a href="#tracking" className="btn btn-secondary btn-lg">
+              <a href="/track" className="btn btn-secondary btn-lg">
                 Track Consignment
               </a>
             </div>

@@ -24,7 +24,7 @@ export function Navbar({ onOpenLeadModal }: NavbarProps) {
             </a>
             <span style={{ opacity: 0.3 }}>|</span>
             <a
-              href="http://localhost:3000"
+              href="https://app.shipit.co.ke"
               target="_blank"
               rel="noreferrer"
               className="ticker-link"
@@ -33,7 +33,7 @@ export function Navbar({ onOpenLeadModal }: NavbarProps) {
               Control Tower <ExternalLink size={12} />
             </a>
             <a
-              href="http://localhost:3002"
+              href="https://rider.shipit.co.ke"
               target="_blank"
               rel="noreferrer"
               className="ticker-link"
@@ -73,13 +73,13 @@ export function Navbar({ onOpenLeadModal }: NavbarProps) {
               <a href="#coverage">47 Counties</a>
             </li>
             <li>
-              <a href="#tracking">Track Consignment</a>
+            <a href="/track">Track Consignment</a>
             </li>
           </ul>
 
           <div className="nav-actions">
             <a
-              href="http://localhost:3001"
+              href="https://merchant.shipit.co.ke"
               target="_blank"
               rel="noreferrer"
               className="btn btn-secondary"

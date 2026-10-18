@@ -11,18 +11,43 @@ import { CoverageMap } from './components/CoverageMap';
 import { TrackingWidget } from './components/TrackingWidget';
 import { LeadCaptureModal } from './components/LeadCaptureModal';
 import { Footer } from './components/Footer';
+import { Faq } from './components/Faq';
+import { trackMarketingEvent } from './utils/analytics';
 
 export default function App() {
   const [leadModalOpen, setLeadModalOpen] = useState(false);
   const [selectedOrders, setSelectedOrders] = useState(500);
 
   function handleOpenLeadModal(orders: number = 500) {
+    trackMarketingEvent('quote_opened');
     setSelectedOrders(orders);
     setLeadModalOpen(true);
   }
 
   function handleCloseLeadModal() {
     setLeadModalOpen(false);
+  }
+
+  const path = window.location.pathname;
+  const query = new URLSearchParams(window.location.search);
+  if (path === '/track') {
+    return (
+      <div className="website-root">
+        <Navbar onOpenLeadModal={() => { window.location.href = '/request-quote'; }} />
+        <main className="dedicated-page"><TrackingWidget initialTrackingNumber={query.get('waybill') ?? ''} /></main>
+        <Footer />
+      </div>
+    );
+  }
+  if (path === '/request-quote') {
+    return (
+      <div className="website-root">
+        <Navbar onOpenLeadModal={() => undefined} />
+        <main>
+          <LeadCaptureModal isOpen initialOrders={Number(query.get('orders')) || 500} standalone onClose={() => { window.location.href = '/'; }} />
+        </main>
+      </div>
+    );
   }
 
   return (
@@ -53,6 +78,8 @@ export default function App() {
 
       {/* 9. Countrywide 47 Counties Coverage Matrix */}
       <CoverageMap />
+
+      <Faq />
 
       {/* 10. Live Consignment & Waybill Tracker */}
       <TrackingWidget />

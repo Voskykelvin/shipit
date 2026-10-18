@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { api } from '@shipit/api-client';
 import { CheckCircle2, MapPin, Package, Search, Truck } from 'lucide-react';
+import { trackMarketingEvent } from '../utils/analytics';
 
 interface TrackingTimelineItem {
   status: string;
@@ -19,8 +20,12 @@ interface TrackingResult {
   timeline: TrackingTimelineItem[];
 }
 
-export function TrackingWidget() {
-  const [waybill, setWaybill] = useState('');
+interface TrackingWidgetProps {
+  initialTrackingNumber?: string;
+}
+
+export function TrackingWidget({ initialTrackingNumber = '' }: TrackingWidgetProps) {
+  const [waybill, setWaybill] = useState(initialTrackingNumber);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<TrackingResult | null>(null);
   const [error, setError] = useState('');
@@ -35,6 +40,7 @@ export function TrackingWidget() {
     setResult(null);
 
     try {
+      trackMarketingEvent('tracking_searched');
       const data = await api.publicRequest<TrackingResult>(`/tracking/${encodeURIComponent(query)}`);
       setResult(data);
     } catch (err) {
@@ -43,6 +49,12 @@ export function TrackingWidget() {
       setLoading(false);
     }
   }
+
+  useEffect(() => {
+    if (initialTrackingNumber) void handleTrack(undefined, initialTrackingNumber);
+  // The initial URL value is intentionally read once when this page mounts.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <section className="section-pad tracking-section" id="tracking">

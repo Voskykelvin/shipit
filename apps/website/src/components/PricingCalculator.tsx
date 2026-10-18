@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Calculator, CheckCircle2, ShieldCheck, TrendingUp, Truck } from 'lucide-react';
+import { trackMarketingEvent } from '../utils/analytics';
 
 interface PricingCalculatorProps {
   onOpenLeadModal: (orders: number) => void;
@@ -191,7 +192,10 @@ export function PricingCalculator({ onOpenLeadModal }: PricingCalculatorProps) {
             <button
               className="btn btn-amber btn-lg"
               style={{ width: '100%' }}
-              onClick={() => onOpenLeadModal(ordersPerMonth)}
+              onClick={() => {
+                trackMarketingEvent('calculator_quote_requested');
+                onOpenLeadModal(ordersPerMonth);
+              }}
             >
               Request Custom Enterprise Contract Rate Card
             </button>

@@ -1,14 +1,16 @@
 import React, { useState } from 'react';
 import { api } from '@shipit/api-client';
-import { CheckCircle2, MessageSquare, Send, ShieldCheck, X } from 'lucide-react';
+import { CheckCircle2, Send, X } from 'lucide-react';
+import { trackMarketingEvent } from '../utils/analytics';
 
 interface LeadCaptureModalProps {
   isOpen: boolean;
   initialOrders?: number;
   onClose: () => void;
+  standalone?: boolean;
 }
 
-export function LeadCaptureModal({ isOpen, initialOrders = 500, onClose }: LeadCaptureModalProps) {
+export function LeadCaptureModal({ isOpen, initialOrders = 500, onClose, standalone = false }: LeadCaptureModalProps) {
   const [submitted, setSubmitted] = useState(false);
   const [businessName, setBusinessName] = useState('');
   const [contactName, setContactName] = useState('');
@@ -41,6 +43,7 @@ export function LeadCaptureModal({ isOpen, initialOrders = 500, onClose }: LeadC
           serviceNeeded,
         },
       });
+      trackMarketingEvent('quote_submitted');
       setSubmitted(true);
     } catch (submissionError) {
       setError(submissionError instanceof Error ? submissionError.message : 'We could not submit your request. Please try again.');
@@ -49,14 +52,9 @@ export function LeadCaptureModal({ isOpen, initialOrders = 500, onClose }: LeadC
     }
   }
 
-  const waMessage = encodeURIComponent(
-    `Hello Ship It Logistics team, I would like to request a corporate logistics proposal for "${businessName}" (${businessType}). We need ${pallets} pallets storage and approximately ${orders} monthly deliveries with service: ${serviceNeeded}.`,
-  );
-  const waUrl = `https://wa.me/254700000000?text=${waMessage}`;
-
   return (
-    <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+    <div className={standalone ? 'quote-page-shell' : 'modal-backdrop'} onClick={standalone ? undefined : onClose}>
+      <div className={standalone ? 'modal-sheet quote-page-form' : 'modal-sheet'} onClick={(e) => e.stopPropagation()}>
         <button className="modal-close-x" onClick={onClose} aria-label="Close modal">
           <X size={20} />
         </button>
@@ -263,22 +261,13 @@ export function LeadCaptureModal({ isOpen, initialOrders = 500, onClose }: LeadC
             </p>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
-              <a
-                href={waUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="btn btn-emerald btn-lg"
-                style={{ width: '100%' }}
-              >
-                <MessageSquare size={17} /> Connect Instantly on WhatsApp Business
-              </a>
               <button
                 type="button"
                 className="btn btn-secondary"
                 onClick={onClose}
                 style={{ width: '100%', color: 'var(--navy-deep)', borderColor: 'var(--border-strong)' }}
               >
-                Close
+                Return to website
               </button>
             </div>
           </div>

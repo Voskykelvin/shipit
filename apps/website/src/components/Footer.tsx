@@ -105,7 +105,7 @@ export function Footer() {
                 </a>
               </li>
               <li>
-                <a href="#tracking">Consignment Waybill Tracker</a>
+                <a href="/track">Consignment Waybill Tracker</a>
               </li>
             </ul>
 
