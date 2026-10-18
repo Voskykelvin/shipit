@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowRight, Clock, ExternalLink, MapPin, Phone, ShieldCheck } from 'lucide-react';
+import { ArrowRight, ExternalLink } from 'lucide-react';
 
 interface NavbarProps {
   onOpenLeadModal: () => void;
@@ -19,10 +19,6 @@ export function Navbar({ onOpenLeadModal }: NavbarProps) {
           </div>
 
           <div className="ticker-right">
-            <a href="tel:+254700000000" className="ticker-link">
-              <Phone size={13} color="#f59e0b" /> +254 (0) 700 000 000
-            </a>
-            <span style={{ opacity: 0.3 }}>|</span>
             <a
               href="https://app.shipit.co.ke"
               target="_blank"
@@ -48,7 +44,7 @@ export function Navbar({ onOpenLeadModal }: NavbarProps) {
       {/* Main Corporate Navigation */}
       <header className="navbar">
         <div className="container nav-inner">
-          <a href="#" className="brand-link">
+          <a href="/" className="brand-link">
             <div className="brand-logo-badge">S</div>
             <div className="brand-title-wrap">
               <strong>Ship It Logistics</strong>

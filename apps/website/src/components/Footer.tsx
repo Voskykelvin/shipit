@@ -1,5 +1,5 @@
 import React from 'react';
-import { ExternalLink, Mail, MapPin, Phone, ShieldCheck } from 'lucide-react';
+import { ExternalLink, ShieldCheck } from 'lucide-react';
 
 export function Footer() {
   return (
@@ -17,21 +17,12 @@ export function Footer() {
               </strong>
             </div>
             <p>
-              Kenya&apos;s tech-enabled contract warehousing, commercial distribution, and express courier partner.
-              Serving local manufacturers, multinational distributors, and direct-to-consumer enterprises across
-              all 47 counties and East African trade corridors.
+              A fulfillment operating system for teams that need inventory control, warehouse execution, delivery
+              evidence, and COD reconciliation in one operational workflow.
             </p>
 
-            <div style={{ marginTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.65rem', fontSize: '0.88rem' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', color: '#e2e8f0' }}>
-                <MapPin size={16} color="#f59e0b" /> Nairobi Central Hub: Commercial Street, Industrial Area
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', color: '#e2e8f0' }}>
-                <Phone size={16} color="#f59e0b" /> Operations Dispatch: +254 (0) 700 000 000
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', color: '#e2e8f0' }}>
-                <Mail size={16} color="#f59e0b" /> Corporate Desk: enterprise@shipit.co.ke
-              </div>
+            <div style={{ marginTop: '1.5rem' }}>
+              <a href="/request-quote" className="btn btn-amber">Request a proposal</a>
             </div>
           </div>
 
