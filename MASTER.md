@@ -353,15 +353,21 @@ The current clients are React/Vite applications backed by the authenticated Expr
 | Return creation, receiving and inspection | Staff: Returns | Staff with matching permissions create returns, enter actual received quantities and quarantine locations, and select condition grades and disposition actions. |
 | Rider shift reconciliation, cash-variance approval, merchant ledgers and settlement lifecycle | Merchant: Finance; Staff: Finance | Merchants view ledger/settlement history and request settlements. Staff reconcile shifts; operations managers and super admins review and approve cash variances with an explicit reason. Authorized finance staff create, approve or disburse/mark settlements. |
 | Merchant, merchant-user, product and rider provisioning | Staff: Merchants & fleet | Onboarding and catalog/rider setup are available to users with the matching permissions. |
-| Public shipment tracking | Public `/track?waybill=…` page; merchant order links | Shareable tracking links use unauthenticated `/tracking/:trackingNumber`; a broader standalone marketing website is not present. |
+| Public shipment tracking and commercial inquiries | Public marketing website; merchant order links | Shareable tracking uses unauthenticated `GET /tracking/:trackingNumber`; the proposal form uses validated `POST /inquiries`. |
 | M-Pesa callbacks, B2C result callbacks and background domain jobs | API/webhook and worker processes | Backend integrations execute without an operator-facing callback-monitoring screen. |
 
 ### 6.1 Current Client Limits (Not Yet Implemented)
-- There is no broader public marketing website beyond the standalone parcel-tracking page.
+- The public marketing website is a React/Vite application at `apps/website`. It presents the product workflow, a planning calculator, public tracking, and a commercial inquiry form. Pricing, coverage, operational SLAs, licensing, insurance, and partner availability must be confirmed in a written proposal; the site must not represent illustrative planning figures as guaranteed service terms.
 - The rider app scans Code 128/QR waybills on supported cameras and provides manual/handheld-scanner entry as a fallback. It caches assigned tasks and queues cash/prepaid proof-of-delivery submissions offline, with signature capture and compressed photo upload.
 - STK initiation is asynchronous; the rider app polls for callback confirmation and receives the confirmed receipt. The API rejects STK proof of delivery unless the matching order, amount, rider, and receipt were confirmed by the callback.
 - The staff finance UI does not provide a dedicated M-Pesa callback reconciliation console or rate-card builder.
 - Control-tower and portal views are API-backed, but no live database/API end-to-end browser test is implied by a successful compile.
+
+### 6.2 Public Website Integration Contract
+
+- Public waybill tracking uses unauthenticated `GET /api/tracking/:trackingNumber`. The website displays only the API response and must show a clear error for unavailable or unknown tracking numbers.
+- Commercial proposals use unauthenticated `POST /api/inquiries`. The API validates contact information, normalizes Kenyan phone numbers, and sends a `merchant.inquiry_received` domain event when the background queue is available.
+- In local development, the website Vite proxy forwards `/api` to `VITE_API_PROXY_TARGET` (default `http://localhost:4000`). Deployments must route `/api` to the API and include the website origin in `CORS_ORIGINS` for direct browser access.
 
 ---
 

@@ -1,5 +1,9 @@
 name: Ship It CI
 
+concurrency:
+  group: shipit-ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 on:
   push:
     branches: [main, master]

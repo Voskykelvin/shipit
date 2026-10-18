@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { api } from '@shipit/api-client';
-import { CheckCircle2, Clock, Package, Search } from 'lucide-react';
+import { CheckCircle2, MapPin, Package, Search, Truck } from 'lucide-react';
 
 interface TrackingTimelineItem {
   status: string;
@@ -25,9 +25,9 @@ export function TrackingWidget() {
   const [result, setResult] = useState<TrackingResult | null>(null);
   const [error, setError] = useState('');
 
-  async function handleTrack(event: React.FormEvent) {
-    event.preventDefault();
-    const query = waybill.trim();
+  async function handleTrack(event?: React.FormEvent, codeToTrack?: string) {
+    if (event) event.preventDefault();
+    const query = (codeToTrack || waybill).trim();
     if (!query) return;
 
     setLoading(true);
@@ -38,153 +38,146 @@ export function TrackingWidget() {
       const data = await api.publicRequest<TrackingResult>(`/tracking/${encodeURIComponent(query)}`);
       setResult(data);
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : 'Could not find a parcel with that waybill number. Please check and try again.',
-      );
+      setError(err instanceof Error ? err.message : 'Could not find that waybill. Please check the number and try again.');
     } finally {
       setLoading(false);
     }
   }
 
   return (
-    <section className="section" id="tracking">
+    <section className="section-pad tracking-section" id="tracking">
       <div className="container">
         <div className="section-head">
-          <div className="eyebrow">
-            <Package size={14} /> Live Milestone Tracking
-          </div>
-          <h2>
-            Track any parcel <span className="gradient-text">in real time.</span>
+          <span className="eyebrow-badge">
+            <Package size={14} /> REAL-TIME WAYBILL TRACKING
+          </span>
+          <h2 className="section-title">
+            Track Your Consignment <span className="text-blue">in Real Time.</span>
           </h2>
-          <p>
-            Enter your 4x6 thermal waybill tracking code to inspect real-time dispatch and delivery
-            status.
+          <p className="section-sub">
+            Inspect live chain-of-custody milestones, route dispatch manifests, and delivery confirmation
+            with thermal barcode waybill verification.
           </p>
         </div>
 
-        <div className="track-widget-box">
-          <form onSubmit={handleTrack}>
-            <label style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-muted)' }}>
-              Waybill Number
-            </label>
-            <div className="track-form-row">
+        <div className="tracking-card-container">
+          <form onSubmit={(e) => handleTrack(e)}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <label style={{ fontSize: '0.92rem', fontWeight: 700, color: 'var(--navy-deep)' }}>
+                Waybill / Consignment Tracking Number
+              </label>
+            </div>
+
+            <div className="tracking-input-bar">
               <input
                 value={waybill}
-                onChange={(event) => setWaybill(event.target.value)}
-                placeholder="e.g. WB-2026-90412-KE"
+                onChange={(e) => setWaybill(e.target.value)}
+                placeholder="e.g. WB-84920-KE or CNT-2026-NBO"
                 required
               />
-              <button type="submit" className="btn btn-primary" disabled={loading}>
-                <Search size={16} /> {loading ? 'Locating…' : 'Track Parcel'}
+              <button type="submit" className="btn btn-primary btn-lg" disabled={loading}>
+                <Search size={18} /> {loading ? 'Locating...' : 'Track Consignment'}
               </button>
             </div>
           </form>
 
-          {error && (
-            <div
-              style={{
-                marginTop: '1.5rem',
-                padding: '1rem',
-                borderRadius: '8px',
-                background: 'rgba(239, 68, 68, 0.15)',
-                border: '1px solid rgba(239, 68, 68, 0.3)',
-                color: '#f87171',
-                fontSize: '0.92rem',
-              }}
-            >
-              {error}
-            </div>
-          )}
+          {error && <p role="alert" style={{ color: '#b91c1c', marginTop: '1rem' }}>{error}</p>}
 
+          {/* Tracking Result View */}
           {result && (
-            <div className="track-timeline">
+            <div style={{ marginTop: '2.5rem', paddingTop: '2rem', borderTop: '1px solid var(--border-light)' }}>
+              {/* Header Info Banner */}
               <div
                 style={{
+                  background: 'var(--bg-subtle)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: '1.25rem 1.5rem',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'space-between',
                   flexWrap: 'wrap',
                   gap: '1rem',
-                  marginBottom: '1.75rem',
+                  marginBottom: '2rem',
                 }}
               >
                 <div>
-                  <span style={{ fontSize: '0.78rem', color: 'var(--text-dim)', textTransform: 'uppercase' }}>
-                    Tracking Code
+                  <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700 }}>
+                    Waybill Number
                   </span>
-                  <div style={{ fontSize: '1.25rem', fontWeight: 800, fontFamily: 'var(--font-mono)' }}>
+                  <div style={{ fontSize: '1.25rem', fontWeight: 800, fontFamily: 'var(--font-mono)', color: 'var(--navy-deep)' }}>
                     {result.trackingNumber}
                   </div>
                 </div>
+
                 <div>
-                  <span style={{ fontSize: '0.78rem', color: 'var(--text-dim)', textTransform: 'uppercase' }}>
+                  <span style={{ fontSize: '0.74rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 700 }}>
                     Destination Area
                   </span>
-                  <div style={{ fontSize: '1rem', fontWeight: 700 }}>
-                    {result.destination.townOrSubCounty}, {result.destination.county}
+                  <div style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--navy-deep)', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                    <MapPin size={15} color="#1d4ed8" /> {result.destination.townOrSubCounty}, {result.destination.county}
                   </div>
                 </div>
+
                 <div
                   style={{
+                    background: 'var(--blue-light)',
+                    color: 'var(--blue-brand)',
+                    border: '1px solid #bfdbfe',
                     padding: '0.4rem 0.85rem',
-                    borderRadius: '9999px',
-                    fontSize: '0.85rem',
-                    fontWeight: 700,
-                    background: 'rgba(59, 130, 246, 0.15)',
-                    color: '#60a5fa',
-                    border: '1px solid rgba(59, 130, 246, 0.3)',
+                    borderRadius: 'var(--radius-full)',
+                    fontSize: '0.84rem',
+                    fontWeight: 800,
                   }}
                 >
                   {result.status.replaceAll('_', ' ')}
                 </div>
               </div>
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+              {/* Milestone Timeline */}
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', paddingLeft: '0.5rem' }}>
                 {result.timeline.map((event, index) => (
                   <div
                     key={`${event.status}-${index}`}
                     style={{
                       display: 'flex',
-                      gap: '1rem',
+                      gap: '1.25rem',
                       alignItems: 'flex-start',
+                      position: 'relative',
                     }}
                   >
                     <div
                       style={{
-                        width: '32px',
-                        height: '32px',
+                        width: '36px',
+                        height: '36px',
                         borderRadius: '50%',
-                        background:
-                          index === 0
-                            ? 'rgba(16, 185, 129, 0.2)'
-                            : 'rgba(255, 255, 255, 0.05)',
-                        border:
-                          index === 0
-                            ? '1px solid #10b981'
-                            : '1px solid var(--border-subtle)',
-                        color: index === 0 ? '#10b981' : 'var(--text-dim)',
+                        background: index === 0 ? 'var(--blue-brand)' : '#ffffff',
+                        border: index === 0 ? '2px solid #ffffff' : '2px solid var(--border-strong)',
+                        color: index === 0 ? '#ffffff' : 'var(--text-muted)',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'center',
                         flexShrink: 0,
+                        boxShadow: index === 0 ? '0 0 12px rgba(29, 78, 216, 0.4)' : 'none',
+                        zIndex: 2,
                       }}
                     >
-                      {index === 0 ? <CheckCircle2 size={16} /> : <Clock size={14} />}
+                      {index === 0 ? <Truck size={18} /> : <CheckCircle2 size={16} />}
                     </div>
-                    <div>
-                      <strong style={{ fontSize: '0.95rem' }}>
-                        {event.status.replaceAll('_', ' ')}
-                      </strong>
+
+                    <div style={{ flex: 1 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '0.5rem' }}>
+                        <strong style={{ fontSize: '1.02rem', color: 'var(--navy-deep)' }}>
+                          {event.status.replaceAll('_', ' ')}
+                        </strong>
+                        <time style={{ color: 'var(--text-muted)', fontSize: '0.8rem', fontFamily: 'var(--font-mono)' }}>
+                          {new Date(event.occurredAt).toLocaleString()}
+                        </time>
+                      </div>
                       {event.detail && (
-                        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                        <p style={{ color: 'var(--text-body)', fontSize: '0.88rem', marginTop: '0.25rem', lineHeight: 1.5 }}>
                           {event.detail}
                         </p>
                       )}
-                      <time style={{ color: 'var(--text-dim)', fontSize: '0.78rem' }}>
-                        {new Date(event.occurredAt).toLocaleString()}
-                      </time>
                     </div>
                   </div>
                 ))}

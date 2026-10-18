@@ -1,101 +1,132 @@
 import React from 'react';
-import { ExternalLink, ShieldCheck } from 'lucide-react';
+import { ExternalLink, Mail, MapPin, Phone, ShieldCheck } from 'lucide-react';
 
 export function Footer() {
   return (
-    <footer className="footer">
+    <footer className="corporate-footer">
       <div className="container">
-        <div className="footer-grid">
-          <div className="footer-brand">
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-              <div className="logo-badge">S</div>
-              <strong style={{ fontSize: '1.25rem' }}>Ship It</strong>
+        <div className="footer-top-grid">
+          {/* Brand Column */}
+          <div className="footer-brand-pane">
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
+              <div className="brand-logo-badge" style={{ width: '38px', height: '38px', fontSize: '1.25rem' }}>
+                S
+              </div>
+              <strong style={{ fontSize: '1.35rem', color: '#ffffff', fontFamily: 'var(--font-heading)' }}>
+                Ship It Logistics
+              </strong>
             </div>
             <p>
-              The physical goods Fulfillment Operating System for emerging e-commerce markets.
-              End-to-end custody tracking, warehousing, pre-dispatch verification, and Safaricom
-              M-Pesa Cash-on-Delivery clearing.
+              Kenya&apos;s tech-enabled contract warehousing, commercial distribution, and express courier partner.
+              Serving local manufacturers, multinational distributors, and direct-to-consumer enterprises across
+              all 47 counties and East African trade corridors.
             </p>
+
+            <div style={{ marginTop: '1.5rem', display: 'flex', flexDirection: 'column', gap: '0.65rem', fontSize: '0.88rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', color: '#e2e8f0' }}>
+                <MapPin size={16} color="#f59e0b" /> Nairobi Central Hub: Commercial Street, Industrial Area
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', color: '#e2e8f0' }}>
+                <Phone size={16} color="#f59e0b" /> Operations Dispatch: +254 (0) 700 000 000
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.6rem', color: '#e2e8f0' }}>
+                <Mail size={16} color="#f59e0b" /> Corporate Desk: enterprise@shipit.co.ke
+              </div>
+            </div>
           </div>
 
-          <div className="footer-col">
-            <h4>Platform</h4>
-            <ul>
+          {/* Capabilities Column */}
+          <div>
+            <h4 className="footer-col-title">Capabilities</h4>
+            <ul className="footer-nav-list">
               <li>
-                <a href="#how-it-works">How It Works</a>
+                <a href="#services">High-Bay Pallet Storage</a>
               </li>
               <li>
-                <a href="#features">Architecture</a>
+                <a href="#services">Countrywide Express Courier</a>
               </li>
               <li>
-                <a href="#pricing">Rate Calculator</a>
+                <a href="#services">Pay on Delivery (COD &amp; M-Pesa)</a>
               </li>
               <li>
-                <a href="#coverage">Coverage Map</a>
+                <a href="#services">Dedicated Rider &amp; Fleet Hire</a>
               </li>
               <li>
-                <a href="#tracking">Milestone Tracking</a>
+                <a href="#services">Mombasa Port &amp; ICD Cargo</a>
+              </li>
+              <li>
+                <a href="#services">Cross-Border East Africa</a>
               </li>
             </ul>
           </div>
 
-          <div className="footer-col">
-            <h4>Portals</h4>
-            <ul>
+          {/* Sector Solutions */}
+          <div>
+            <h4 className="footer-col-title">Sector Solutions</h4>
+            <ul className="footer-nav-list">
               <li>
-                <a href="http://localhost:3001" target="_blank" rel="noreferrer">
-                  Merchant Portal <ExternalLink size={12} />
-                </a>
+                <a href="#solutions">FMCG &amp; Food Manufacturers</a>
               </li>
               <li>
-                <a href="http://localhost:3000" target="_blank" rel="noreferrer">
-                  Staff FOS Dashboard <ExternalLink size={12} />
-                </a>
+                <a href="#solutions">Pharmaceuticals &amp; Health</a>
               </li>
               <li>
-                <a href="http://localhost:3002" target="_blank" rel="noreferrer">
-                  Rider Delivery PWA <ExternalLink size={12} />
-                </a>
+                <a href="#solutions">Hardware &amp; Heavy Importers</a>
               </li>
               <li>
-                <a href="#tracking">Parcel Tracking</a>
+                <a href="#solutions">eCommerce &amp; Retail Brands</a>
+              </li>
+              <li>
+                <a href="#calculator">Tariff Rate Calculator</a>
+              </li>
+              <li>
+                <a href="#coverage">47 Counties Network Map</a>
               </li>
             </ul>
           </div>
 
-          <div className="footer-col">
-            <h4>Security & Standards</h4>
-            <ul>
+          {/* Operational Portals & Compliance */}
+          <div>
+            <h4 className="footer-col-title">Operational Portals</h4>
+            <ul className="footer-nav-list">
               <li>
-                <span style={{ color: '#10b981', display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.88rem' }}>
-                  <ShieldCheck size={16} /> Zero Untracked Movements
-                </span>
+                <a href="https://merchant.shipit.co.ke" target="_blank" rel="noreferrer">
+                  Merchant Stock Portal <ExternalLink size={12} />
+                </a>
               </li>
               <li>
-                <span style={{ color: 'var(--text-muted)', fontSize: '0.88rem' }}>
-                  Append-Only Ledgers
-                </span>
+                <a href="https://app.shipit.co.ke" target="_blank" rel="noreferrer">
+                  Staff Control Tower <ExternalLink size={12} />
+                </a>
               </li>
               <li>
-                <span style={{ color: 'var(--text-muted)', fontSize: '0.88rem' }}>
-                  Safaricom Daraja STK Push
-                </span>
+                <a href="https://rider.shipit.co.ke" target="_blank" rel="noreferrer">
+                  Rider Operations App <ExternalLink size={12} />
+                </a>
               </li>
               <li>
-                <span style={{ color: 'var(--text-muted)', fontSize: '0.88rem' }}>
-                  Nairobi Hubs · Kenya
-                </span>
+                <a href="#tracking">Consignment Waybill Tracker</a>
               </li>
             </ul>
+
+            <div style={{ marginTop: '1.75rem', paddingTop: '1.25rem', borderTop: '1px solid rgba(255, 255, 255, 0.1)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', color: '#34d399', fontSize: '0.85rem', fontWeight: 700 }}>
+                <ShieldCheck size={16} /> Fully Insured &amp; Licensed
+              </div>
+              <p style={{ fontSize: '0.76rem', color: '#94a3b8', marginTop: '0.35rem', lineHeight: 1.5 }}>
+                Communications Authority Licensed Courier Operator. KES 50,000,000 Goods In Transit coverage.
+              </p>
+            </div>
           </div>
         </div>
 
-        <div className="footer-bottom">
+        {/* Bottom Bar */}
+        <div className="footer-bottom-bar">
           <div>
-            &copy; {new Date().getFullYear()} Ship It Technologies Ltd. All rights reserved. Registered in Kenya.
+            &copy; {new Date().getFullYear()} Ship It Logistics &amp; Courier Services Kenya Ltd. All rights reserved.
           </div>
           <div>
-            Master Fulfillment Operating System · Version 1.0 Production Blueprint
+            Nairobi · Mombasa · Kisumu · Eldoret · Nakuru · East African Corridors
           </div>
         </div>
       </div>

@@ -14,78 +14,118 @@ import {
 export function BlueprintStrip() {
   const stages = [
     {
-      title: '1. Inbound ASN',
-      subtitle: 'Truck dock receiving',
+      title: '1. Inbound Cargo',
+      subtitle: 'Mombasa / ICD receiving',
       icon: <Warehouse size={18} />,
     },
     {
-      title: '2. Putaway Bins',
-      subtitle: 'Barcoded locations',
+      title: '2. High-Bay Putaway',
+      subtitle: 'Barcoded pallet bays',
       icon: <Boxes size={18} />,
     },
     {
-      title: '3. Fraud Shield',
-      subtitle: 'COD pre-dispatch check',
+      title: '3. Fraud Pre-Check',
+      subtitle: 'RTO phone verification',
       icon: <ShieldCheck size={18} />,
     },
     {
       title: '4. Wave Pick & Pack',
-      subtitle: '4x6 Thermal waybills',
+      subtitle: 'Thermal 4x6 waybills',
       icon: <PackageCheck size={18} />,
     },
     {
       title: '5. Zoned Manifest',
-      subtitle: 'Route audio validation',
+      subtitle: 'Route barcode verification',
       icon: <FileCheck2 size={18} />,
     },
     {
-      title: '6. Last-Mile Rider',
-      subtitle: 'PWA camera scanning',
+      title: '6. Courier Dispatch',
+      subtitle: 'GPS fleet & rider app',
       icon: <Truck size={18} />,
     },
     {
-      title: '7. M-Pesa STK Push',
-      subtitle: 'Instant COD clearing',
+      title: '7. M-Pesa STK COD',
+      subtitle: 'Instant phone payment',
       icon: <CircleDollarSign size={18} />,
     },
     {
-      title: '8. Ledger Settlement',
-      subtitle: 'Zero variance closeout',
+      title: '8. Bank Remittance',
+      subtitle: 'T+1 automated payout',
       icon: <ClipboardCheck size={18} />,
     },
   ];
 
   return (
-    <div className="container" id="how-it-works">
-      <div className="blueprint-strip">
-        <div className="blueprint-header">
+    <div className="container" id="how-it-works" style={{ margin: '3.5rem auto 1.5rem' }}>
+      <div
+        style={{
+          background: 'var(--navy-primary)',
+          color: '#ffffff',
+          borderRadius: 'var(--radius-xl)',
+          padding: '2.25rem',
+          border: '1px solid var(--navy-border)',
+          boxShadow: 'var(--shadow-xl)',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '1rem', marginBottom: '1.75rem' }}>
           <div>
-            <h3>
-              The Closed-Loop Chain of Custody
-            </h3>
-            <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-              From initial container unboxing to verified M-Pesa bank disbursement.
+            <h3 style={{ fontSize: '1.35rem', color: '#ffffff' }}>The Physical Closed-Loop Chain of Custody</h3>
+            <span style={{ fontSize: '0.85rem', color: '#94a3b8' }}>
+              From maritime container intake at Mombasa Port to verified M-Pesa bank disbursement in Nairobi.
             </span>
           </div>
-          <div className="zero-untracked-badge">
-            <ShieldCheck size={14} /> ZERO UNTRACKED MOVEMENTS
+          <div
+            style={{
+              background: 'rgba(245, 158, 11, 0.15)',
+              border: '1px solid rgba(245, 158, 11, 0.35)',
+              color: 'var(--amber-safety)',
+              padding: '0.35rem 0.85rem',
+              borderRadius: 'var(--radius-full)',
+              fontSize: '0.78rem',
+              fontWeight: 800,
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.45rem',
+            }}
+          >
+            <ShieldCheck size={14} /> ZERO UNTRACKED INVENTORY MOVEMENTS
           </div>
         </div>
 
-        <div className="flow-stages">
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+            gap: '1rem',
+            alignItems: 'center',
+          }}
+        >
           {stages.map((stage, index) => (
-            <React.Fragment key={stage.title}>
-              <div className="flow-node">
-                <div className="flow-node-icon">{stage.icon}</div>
-                <strong>{stage.title}</strong>
-                <span>{stage.subtitle}</span>
+            <div
+              key={stage.title}
+              style={{
+                background: 'rgba(255, 255, 255, 0.05)',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                borderRadius: 'var(--radius-md)',
+                padding: '0.85rem',
+                textAlign: 'center',
+              }}
+            >
+              <div
+                style={{
+                  color: 'var(--amber-safety)',
+                  display: 'flex',
+                  justifyContent: 'center',
+                  marginBottom: '0.4rem',
+                }}
+              >
+                {stage.icon}
               </div>
-              {index < stages.length - 1 && (
-                <div className="flow-arrow">
-                  <ArrowRight size={16} />
-                </div>
-              )}
-            </React.Fragment>
+              <strong style={{ display: 'block', fontSize: '0.82rem', color: '#ffffff', marginBottom: '0.15rem' }}>
+                {stage.title}
+              </strong>
+              <span style={{ fontSize: '0.7rem', color: '#94a3b8' }}>{stage.subtitle}</span>
+            </div>
           ))}
         </div>
       </div>

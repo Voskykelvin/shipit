@@ -23,6 +23,17 @@ export const kenyaPhoneSchema = z
     return `+254${cleaned}`;
   });
 
+export const publicInquirySchema = z.object({
+  businessName: z.string().trim().min(2).max(120),
+  contactName: z.string().trim().min(2).max(160),
+  phone: kenyaPhoneSchema,
+  email: z.string().trim().email().transform((value) => value.toLowerCase()),
+  businessType: z.string().trim().min(2).max(100).optional(),
+  pallets: z.number().int().nonnegative().max(100_000).optional(),
+  estimatedMonthlyOrders: z.number().int().positive().max(10_000_000).optional(),
+  serviceNeeded: z.string().trim().min(2).max(240).optional(),
+});
+
 export const createMerchantSchema = z.object({
   code: z.string().trim().min(2).max(32).regex(/^[A-Za-z0-9_-]+$/).transform((value) => value.toUpperCase()),
   name: z.string().trim().min(2).max(120),

@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowRight, ExternalLink } from 'lucide-react';
+import { ArrowRight, Clock, ExternalLink, MapPin, Phone, ShieldCheck } from 'lucide-react';
 
 interface NavbarProps {
   onOpenLeadModal: () => void;
@@ -7,47 +7,92 @@ interface NavbarProps {
 
 export function Navbar({ onOpenLeadModal }: NavbarProps) {
   return (
-    <header className="navbar">
-      <div className="container nav-inner">
-        <a href="#" className="brand-link">
-          <div className="logo-badge">S</div>
-          <div className="brand-copy">
-            <strong>Ship It</strong>
-            <span>Fulfillment OS</span>
+    <>
+      {/* Top Corporate Status Ticker */}
+      <div className="top-ticker-bar">
+        <div className="container top-ticker-inner">
+          <div className="ticker-left">
+            <span className="ticker-badge">KENYA &amp; REGIONAL 3PL</span>
+            <span className="ticker-text">
+              Nairobi Industrial Area Hub &amp; ICD Embakasi • Serving 47 Counties • Next-Morning COD Remittance
+            </span>
           </div>
-        </a>
 
-        <ul className="nav-menu">
-          <li>
-            <a href="#how-it-works">How It Works</a>
-          </li>
-          <li>
-            <a href="#features">Architecture</a>
-          </li>
-          <li>
-            <a href="#pricing">Calculator</a>
-          </li>
-          <li>
-            <a href="#coverage">Coverage</a>
-          </li>
-          <li>
-            <a href="#tracking">Track Parcel</a>
-          </li>
-        </ul>
-
-        <div className="nav-actions">
-          <a
-            href="http://localhost:3001"
-            className="btn btn-secondary"
-            title="Merchant Portal Login"
-          >
-            Merchant Sign In <ExternalLink size={14} />
-          </a>
-          <button className="btn btn-primary" onClick={onOpenLeadModal}>
-            Get Started <ArrowRight size={15} />
-          </button>
+          <div className="ticker-right">
+            <a href="tel:+254700000000" className="ticker-link">
+              <Phone size={13} color="#f59e0b" /> +254 (0) 700 000 000
+            </a>
+            <span style={{ opacity: 0.3 }}>|</span>
+            <a
+              href="http://localhost:3000"
+              target="_blank"
+              rel="noreferrer"
+              className="ticker-link"
+              title="Staff Operations Control Tower"
+            >
+              Control Tower <ExternalLink size={12} />
+            </a>
+            <a
+              href="http://localhost:3002"
+              target="_blank"
+              rel="noreferrer"
+              className="ticker-link"
+              title="Courier Rider PWA"
+            >
+              Rider App <ExternalLink size={12} />
+            </a>
+          </div>
         </div>
       </div>
-    </header>
+
+      {/* Main Corporate Navigation */}
+      <header className="navbar">
+        <div className="container nav-inner">
+          <a href="#" className="brand-link">
+            <div className="brand-logo-badge">S</div>
+            <div className="brand-title-wrap">
+              <strong>Ship It Logistics</strong>
+              <span>Courier &amp; Warehousing KE</span>
+            </div>
+          </a>
+
+          <ul className="nav-menu">
+            <li>
+              <a href="#about">About Us</a>
+            </li>
+            <li>
+              <a href="#services">Services</a>
+            </li>
+            <li>
+              <a href="#solutions">For Manufacturers</a>
+            </li>
+            <li>
+              <a href="#calculator">Tariff Calculator</a>
+            </li>
+            <li>
+              <a href="#coverage">47 Counties</a>
+            </li>
+            <li>
+              <a href="#tracking">Track Consignment</a>
+            </li>
+          </ul>
+
+          <div className="nav-actions">
+            <a
+              href="http://localhost:3001"
+              target="_blank"
+              rel="noreferrer"
+              className="btn btn-secondary"
+              title="Merchant Portal Login"
+            >
+              Merchant Portal <ExternalLink size={14} />
+            </a>
+            <button className="btn btn-amber" onClick={onOpenLeadModal}>
+              Request Corporate Quote <ArrowRight size={15} />
+            </button>
+          </div>
+        </div>
+      </header>
+    </>
   );
 }

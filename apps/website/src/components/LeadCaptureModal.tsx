@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { CheckCircle2, MessageSquare, Send, X } from 'lucide-react';
+import { api } from '@shipit/api-client';
+import { CheckCircle2, MessageSquare, Send, ShieldCheck, X } from 'lucide-react';
 
 interface LeadCaptureModalProps {
   isOpen: boolean;
@@ -7,132 +8,233 @@ interface LeadCaptureModalProps {
   onClose: () => void;
 }
 
-export function LeadCaptureModal({ isOpen, initialOrders = 350, onClose }: LeadCaptureModalProps) {
+export function LeadCaptureModal({ isOpen, initialOrders = 500, onClose }: LeadCaptureModalProps) {
   const [submitted, setSubmitted] = useState(false);
   const [businessName, setBusinessName] = useState('');
   const [contactName, setContactName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
-  const [category, setCategory] = useState('Cosmetics & Skincare');
+  const [businessType, setBusinessType] = useState('Distributor / Wholesaler');
+  const [pallets, setPallets] = useState(10);
   const [orders, setOrders] = useState(initialOrders);
+  const [serviceNeeded, setServiceNeeded] = useState('Storage + Courier + Pay on Delivery');
+  const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   if (!isOpen) return null;
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
-    // Simulate/Post inquiry
+    setError('');
+    setSubmitting(true);
     try {
-      await fetch('/api/inquiries', {
+      await api.publicRequest<{ success: boolean }>('/inquiries', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
+        body: {
           businessName,
           contactName,
           phone,
           email,
-          category,
+          businessType,
+          pallets,
           estimatedMonthlyOrders: orders,
-        }),
-      }).catch(() => {
-        // Fallback gracefully if API endpoint is not yet connected
+          serviceNeeded,
+        },
       });
-    } catch {
-      // Ignore
+      setSubmitted(true);
+    } catch (submissionError) {
+      setError(submissionError instanceof Error ? submissionError.message : 'We could not submit your request. Please try again.');
+    } finally {
+      setSubmitting(false);
     }
-    setSubmitted(true);
   }
 
   const waMessage = encodeURIComponent(
-    `Hello Ship It team, I'd like to onboard my brand "${businessName}" (${category}) for fulfillment. We ship approximately ${orders} orders per month.`,
+    `Hello Ship It Logistics team, I would like to request a corporate logistics proposal for "${businessName}" (${businessType}). We need ${pallets} pallets storage and approximately ${orders} monthly deliveries with service: ${serviceNeeded}.`,
   );
-  const waUrl = `https://wa.me/254712000111?text=${waMessage}`;
+  const waUrl = `https://wa.me/254700000000?text=${waMessage}`;
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-card" onClick={(event) => event.stopPropagation()}>
-        <button className="modal-close" onClick={onClose} aria-label="Close modal">
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-sheet" onClick={(e) => e.stopPropagation()}>
+        <button className="modal-close-x" onClick={onClose} aria-label="Close modal">
           <X size={20} />
         </button>
 
         {!submitted ? (
           <>
-            <div className="eyebrow" style={{ marginBottom: '0.75rem' }}>
-              Merchant Onboarding
+            <div style={{ marginBottom: '1.25rem' }}>
+              <span className="eyebrow-badge">CORPORATE 3PL &amp; COURIER RFQ</span>
+              <h2 style={{ fontSize: '1.85rem', color: 'var(--navy-deep)', marginTop: '0.5rem', lineHeight: 1.2 }}>
+                Request Corporate Proposal &amp; Hub Tour
+              </h2>
+              <p style={{ color: 'var(--text-muted)', fontSize: '0.92rem', marginTop: '0.35rem' }}>
+                Tell us what you need and we will follow up with a tailored scope, availability, and onboarding plan.
+              </p>
             </div>
-            <h2>Scale Your Physical Commerce</h2>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.92rem' }}>
-              Submit your business details to receive a customized fulfillment rate card and warehouse onboarding slot.
-            </p>
 
-            <form className="lead-form" onSubmit={handleSubmit}>
-              <label>
-                Business / Brand Name
+            <form
+              onSubmit={handleSubmit}
+              style={{ display: 'flex', flexDirection: 'column', gap: '1.15rem' }}
+            >
+              <div>
+                <label style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--navy-deep)', display: 'block', marginBottom: '0.35rem' }}>
+                  Company / Organization Name
+                </label>
                 <input
                   value={businessName}
                   onChange={(e) => setBusinessName(e.target.value)}
-                  placeholder="e.g. Nairobi Glow Organics"
+                  placeholder="e.g. Apex Consumer Distributors Ltd"
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem 1rem',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1.5px solid var(--border-strong)',
+                    fontSize: '0.95rem',
+                  }}
                   required
                 />
-              </label>
+              </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
-                <label>
-                  Contact Person
+                <div>
+                  <label style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--navy-deep)', display: 'block', marginBottom: '0.35rem' }}>
+                    Contact Person
+                  </label>
                   <input
                     value={contactName}
                     onChange={(e) => setContactName(e.target.value)}
-                    placeholder="Your Name"
+                    placeholder="Your Full Name"
+                    style={{
+                      width: '100%',
+                      padding: '0.75rem 1rem',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1.5px solid var(--border-strong)',
+                      fontSize: '0.95rem',
+                    }}
                     required
                   />
-                </label>
-                <label>
-                  WhatsApp / Phone
+                </div>
+                <div>
+                  <label style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--navy-deep)', display: 'block', marginBottom: '0.35rem' }}>
+                    Phone / WhatsApp Number
+                  </label>
                   <input
                     type="tel"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    placeholder="0712 345 678"
+                    placeholder="+254 712 000 000"
+                    style={{
+                      width: '100%',
+                      padding: '0.75rem 1rem',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1.5px solid var(--border-strong)',
+                      fontSize: '0.95rem',
+                    }}
                     required
                   />
-                </label>
+                </div>
               </div>
 
-              <label>
-                Business Email
+              <div>
+                <label style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--navy-deep)', display: 'block', marginBottom: '0.35rem' }}>
+                  Official Email Address
+                </label>
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="orders@brand.ke"
+                  placeholder="logistics@company.co.ke"
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem 1rem',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1.5px solid var(--border-strong)',
+                    fontSize: '0.95rem',
+                  }}
                   required
                 />
-              </label>
-
-              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: '1rem' }}>
-                <label>
-                  Product Category
-                  <select value={category} onChange={(e) => setCategory(e.target.value)}>
-                    <option value="Cosmetics & Skincare">Cosmetics & Skincare</option>
-                    <option value="Electronics & Accessories">Electronics & Gadgets</option>
-                    <option value="Fashion & Apparel">Fashion & Apparel</option>
-                    <option value="Health & Supplements">Health & Wellness</option>
-                    <option value="Home & Consumer Goods">Home & Consumer Goods</option>
-                  </select>
-                </label>
-                <label>
-                  Monthly Orders
-                  <input
-                    type="number"
-                    min="10"
-                    value={orders}
-                    onChange={(e) => setOrders(Number(e.target.value))}
-                    required
-                  />
-                </label>
               </div>
 
-              <button type="submit" className="btn btn-primary" style={{ marginTop: '0.5rem' }}>
-                <Send size={16} /> Request Rate Card & Hub Tour
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+                <div>
+                  <label style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--navy-deep)', display: 'block', marginBottom: '0.35rem' }}>
+                    Enterprise Profile
+                  </label>
+                  <select
+                    value={businessType}
+                    onChange={(e) => setBusinessType(e.target.value)}
+                    style={{
+                      width: '100%',
+                      padding: '0.75rem 1rem',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1.5px solid var(--border-strong)',
+                      fontSize: '0.95rem',
+                      background: '#fff',
+                    }}
+                  >
+                    <option value="Manufacturer (Local/MNC)">Manufacturer (Local / MNC)</option>
+                    <option value="Distributor / Wholesaler">Distributor / Wholesaler</option>
+                    <option value="International Importer">International Importer</option>
+                    <option value="eCommerce / Retail Brand">eCommerce / Retail Brand</option>
+                    <option value="Pharmaceuticals">Pharmaceuticals &amp; Healthcare</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--navy-deep)', display: 'block', marginBottom: '0.35rem' }}>
+                    Pallet Space Needed
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={pallets}
+                    onChange={(e) => setPallets(Number(e.target.value))}
+                    placeholder="Pallet Bays"
+                    style={{
+                      width: '100%',
+                      padding: '0.75rem 1rem',
+                      borderRadius: 'var(--radius-md)',
+                      border: '1.5px solid var(--border-strong)',
+                      fontSize: '0.95rem',
+                    }}
+                    required
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label style={{ fontSize: '0.85rem', fontWeight: 700, color: 'var(--navy-deep)', display: 'block', marginBottom: '0.35rem' }}>
+                  Core Logistics Requirement
+                </label>
+                <select
+                  value={serviceNeeded}
+                  onChange={(e) => setServiceNeeded(e.target.value)}
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem 1rem',
+                    borderRadius: 'var(--radius-md)',
+                    border: '1.5px solid var(--border-strong)',
+                    fontSize: '0.95rem',
+                    background: '#fff',
+                  }}
+                >
+                  <option value="Storage + Courier + Pay on Delivery">Full Package (Warehousing, Courier &amp; COD)</option>
+                  <option value="Contract Warehousing & Pallet Storage Only">Contract Pallet Storage &amp; Warehousing Only</option>
+                  <option value="Countrywide Courier Distribution Only">Nationwide Courier &amp; Last-Mile Express Only</option>
+                  <option value="Dedicated Fleet & Rider Outsourcing">Dedicated Rider &amp; Box Truck Fleet Hire</option>
+                  <option value="Inbound Port Cargo Clearance & Cross-Docking">Mombasa Port Cargo &amp; Cross-Border Freight</option>
+                </select>
+              </div>
+
+              {error && <p role="alert" style={{ color: '#b91c1c', fontSize: '0.88rem' }}>{error}</p>}
+              <button
+                type="submit"
+                className="btn btn-amber btn-lg"
+                style={{ width: '100%', marginTop: '0.5rem' }}
+                disabled={submitting}
+              >
+                <Send size={16} /> {submitting ? 'Sending request...' : 'Submit Proposal Request'}
               </button>
             </form>
           </>
@@ -140,38 +242,41 @@ export function LeadCaptureModal({ isOpen, initialOrders = 350, onClose }: LeadC
           <div style={{ textAlign: 'center', padding: '1.5rem 0' }}>
             <div
               style={{
-                width: '60px',
-                height: '60px',
+                width: '64px',
+                height: '64px',
                 borderRadius: '50%',
-                background: 'rgba(16, 185, 129, 0.2)',
-                color: '#10b981',
+                background: 'rgba(5, 150, 105, 0.15)',
+                color: 'var(--emerald-mpesa)',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
                 margin: '0 auto 1.5rem',
               }}
             >
-              <CheckCircle2 size={32} />
+              <CheckCircle2 size={36} />
             </div>
-            <h2>Inquiry Received!</h2>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.95rem', margin: '0.75rem auto 1.75rem', maxWidth: '380px' }}>
-              Thank you, <strong>{contactName}</strong>. Our fulfillment onboarding specialist will contact you within 2 hours.
+
+            <h2 style={{ fontSize: '1.85rem', color: 'var(--navy-deep)' }}>Proposal Request Received!</h2>
+            <p style={{ color: 'var(--text-body)', fontSize: '0.98rem', margin: '0.75rem auto 1.75rem', maxWidth: '420px', lineHeight: 1.6 }}>
+              Thank you, <strong>{contactName}</strong>. We have received {businessName}'s requirements and will
+              use the contact details you provided to follow up.
             </p>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
               <a
                 href={waUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="btn btn-emerald"
+                className="btn btn-emerald btn-lg"
                 style={{ width: '100%' }}
               >
-                <MessageSquare size={16} /> Chat Instantly on WhatsApp
+                <MessageSquare size={17} /> Connect Instantly on WhatsApp Business
               </a>
               <button
                 type="button"
                 className="btn btn-secondary"
                 onClick={onClose}
-                style={{ width: '100%' }}
+                style={{ width: '100%', color: 'var(--navy-deep)', borderColor: 'var(--border-strong)' }}
               >
                 Close
               </button>

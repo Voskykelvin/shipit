@@ -21,11 +21,12 @@ import { trackingRouter } from './tracking.js';
 import { eventsStreamRouter } from './eventsStream.js';
 import { notificationsRouter } from './notifications.js';
 import { domainEventsQueue, enqueueDomainEvent } from './jobs.js';
+import { publicInquirySchema } from '@shipit/validation';
 
 const app = express();
 const port = Number(process.env.PORT ?? 4000);
 const allowedOrigins = new Set(
-  (process.env.CORS_ORIGINS ?? 'http://localhost:3000,http://localhost:3001,http://localhost:3002')
+  (process.env.CORS_ORIGINS ?? 'http://localhost:3000,http://localhost:3001,http://localhost:3002,http://localhost:3003')
     .split(',').map((origin) => origin.trim()).filter(Boolean),
 );
 
@@ -56,15 +57,16 @@ app.use('/api/auth', authRouter);
 app.use('/api', mpesaWebhookRouter);
 app.use('/api', trackingRouter);
 app.post('/api/inquiries', async (req, res) => {
-  const { businessName, contactName, phone, email, category, estimatedMonthlyOrders } = req.body ?? {};
-  if (!businessName || !phone || !email) {
-    return res.status(400).json({ error: 'businessName, phone, and email are required.' });
+  const parsed = publicInquirySchema.safeParse(req.body);
+  if (!parsed.success) {
+    return res.status(400).json({ error: 'Please provide valid business, contact, phone, and email details.' });
   }
+  const inquiry = parsed.data;
   try {
     await enqueueDomainEvent({
       type: 'merchant.inquiry_received',
       entityId: `INQ-${Date.now()}`,
-      payload: { businessName, contactName, phone, email, category, estimatedMonthlyOrders },
+      payload: inquiry,
     });
   } catch {
     // BullMQ may be offline in test/dev

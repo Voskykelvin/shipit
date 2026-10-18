@@ -122,7 +122,14 @@ export const api = {
     return response.blob();
   },
 
-  async publicRequest<T>(path: string): Promise<T> {
-    return decodeResponse<T>(await fetch(`/api${path}`));
+  async publicRequest<T>(path: string, init: Omit<RequestInit, 'body'> & { body?: unknown } = {}): Promise<T> {
+    const headers = new Headers(init.headers);
+    if (init.body !== undefined && init.body !== null && typeof init.body !== 'string') {
+      headers.set('Content-Type', 'application/json');
+    }
+    const body = init.body !== undefined && init.body !== null && typeof init.body !== 'string'
+      ? JSON.stringify(init.body)
+      : init.body;
+    return decodeResponse<T>(await fetch(`/api${path}`, { ...init, headers, body }));
   },
 };
