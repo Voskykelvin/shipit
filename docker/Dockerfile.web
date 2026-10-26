@@ -23,7 +23,6 @@ COPY apps ./apps
 # Build shared libraries
 RUN npm run build --workspace=@shipit/shared-types
 RUN npm run build --workspace=@shipit/validation
-RUN npm run build --workspace=@shipit/api-client
 
 # Build all four frontends
 RUN npm run build --workspace=@shipit/staff-portal
