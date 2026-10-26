@@ -42,10 +42,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js 24.22.1
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 24.22.1
           cache: 'npm'
@@ -57,6 +57,8 @@ jobs:
         run: npm run db:generate --workspace=@shipit/database
 
       - name: Validate Prisma schema
+        env:
+          DATABASE_URL: postgresql://shipit:shipittestpassword@localhost:5432/shipit_test?schema=public
         run: npm run db:validate --workspace=@shipit/database
 
       - name: Monorepo Typecheck
@@ -75,10 +77,10 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Setup Node.js 24.22.1
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 24.22.1
           cache: 'npm'
@@ -90,6 +92,8 @@ jobs:
         run: npm run db:generate --workspace=@shipit/database
 
       - name: Validate Prisma schema
+        env:
+          DATABASE_URL: postgresql://shipit:shipittestpassword@localhost:5432/shipit_test?schema=public
         run: npm run db:validate --workspace=@shipit/database
 
       - name: Build Core Libraries
@@ -121,7 +125,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Build API image
         run: docker build --file docker/Dockerfile.api --tag shipit-api:ci .
