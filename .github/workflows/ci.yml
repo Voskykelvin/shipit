@@ -61,6 +61,12 @@ jobs:
           DATABASE_URL: postgresql://shipit:shipittestpassword@localhost:5432/shipit_test?schema=public
         run: npm run db:validate --workspace=@shipit/database
 
+      - name: Build workspace dependencies
+        run: |
+          npm run build --workspace=@shipit/shared-types
+          npm run build --workspace=@shipit/validation
+          npm run build --workspace=@shipit/database
+
       - name: Monorepo Typecheck
         run: npm run typecheck
 
@@ -101,7 +107,6 @@ jobs:
           npm run build --workspace=@shipit/shared-types
           npm run build --workspace=@shipit/validation
           npm run build --workspace=@shipit/database
-          npm run build --workspace=@shipit/api-client
 
       - name: Build API & Worker
         run: npm run build --workspace=@shipit/api
