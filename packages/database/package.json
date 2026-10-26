@@ -19,15 +19,16 @@
     "db:validate": "prisma validate",
     "db:migrate:dev": "prisma migrate dev",
     "db:migrate:deploy": "prisma migrate deploy",
-    "db:seed": "tsx prisma/seed.ts"
-  },
-  "devDependencies": {
-    "@types/node": "^22.13.4",
-    "tsx": "^4.19.2",
-    "prisma": "^6.8.2"
+    "db:seed": "tsx prisma/seed.ts",
+    "db:bootstrap:production": "tsx prisma/bootstrap-production.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.8.2",
-    "dotenv": "^16.4.7"
+    "dotenv": "^16.4.7",
+    "prisma": "^6.8.2",
+    "tsx": "^4.19.2"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.4"
   }
 }

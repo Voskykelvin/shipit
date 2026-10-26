@@ -2,14 +2,14 @@
   "name": "Ship It Rider",
   "short_name": "Ship It",
   "description": "Rider delivery tasks and proof of delivery",
-  "start_url": "/",
-  "scope": "/",
+  "start_url": "/rider/",
+  "scope": "/rider/",
   "display": "standalone",
   "background_color": "#090e17",
   "theme_color": "#0f172a",
   "icons": [
     {
-      "src": "/icon.svg",
+      "src": "/rider/icon.svg",
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any maskable"

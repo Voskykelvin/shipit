@@ -4,6 +4,7 @@ Use this directory as the maintained entry point for product and production foll
 
 - [Functional audit](FUNCTIONAL-AUDIT.md): which user-facing controls are wired, which are placeholders, and the gaps that block reliable operation.
 - [Production roadmap](PRODUCTION-ROADMAP.md): ordered delivery gates, owners, and evidence required before a live pilot.
+- [Render deployment](RENDER-DEPLOYMENT.md): deploy the API, worker, four web apps, PostgreSQL, and Redis from the Render Blueprint.
 
 ## Local quality gate
 

@@ -28,7 +28,7 @@ import { InventoryView } from './features/inventory/InventoryView';
 import { FinanceView } from './features/finance/FinanceView';
 
 export default function App() {
-  return window.location.pathname.replace(/\/+$/, '') === '/track' ? (
+  return window.location.pathname.replace(/\/+$/, '').endsWith('/track') ? (
     <PublicTrackingPage />
   ) : (
     <MerchantPortal />

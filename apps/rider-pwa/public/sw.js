@@ -1,5 +1,5 @@
 const CACHE_NAME = 'shipit-rider-v1';
-const APP_SHELL = '/';
+const APP_SHELL = new URL(self.registration.scope).pathname;
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -46,7 +46,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  if (url.pathname.startsWith('/assets/')) {
+  if (url.pathname.startsWith(APP_SHELL + 'assets/')) {
     event.respondWith(
       caches.match(request).then((cached) => {
         if (cached) return cached;

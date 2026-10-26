@@ -5,6 +5,7 @@ export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '');
 
   return {
+    base: '/rider/',
     plugins: [react()],
     server: {
       host: '0.0.0.0',
