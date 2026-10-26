@@ -2,22 +2,24 @@
 
 ## Full local stack
 
-Docker Compose runs PostgreSQL, Redis, Mailpit, MinIO, the API, and all three web apps. From the repository root:
+Docker Compose runs PostgreSQL, Redis, Mailpit, MinIO, the API, worker, and all four web apps. From the repository root:
 
 ```powershell
 Copy-Item .env.example .env
-docker compose -f docker/compose.yml up --build
+notepad .env
+docker compose -f docker/compose.yml up --build -d
+docker compose -f docker/compose.yml ps
 ```
 
-Open the staff portal at `http://localhost:3000`, merchant portal at `http://localhost:3001`, rider PWA at `http://localhost:3002`, and API health at `http://localhost:4000/api/health`. Mailpit is at `http://localhost:8025`; MinIO console is at `http://localhost:9001`.
-
-The API applies checked-in migrations on startup and readiness checks both PostgreSQL and Redis. Seed the initial roles, administrator, warehouse, routes, and rate card once with:
+In `.env`, replace `SHIPIT_ADMIN_PASSWORD` with a unique password of at least 16 characters before seeding. The API applies checked-in migrations on startup and readiness checks both PostgreSQL and Redis. Once the API is healthy, seed the initial roles, administrator, warehouse, routes, rate card, and demo accounts:
 
 ```powershell
 docker compose -f docker/compose.yml exec api npm run db:seed --workspace=@shipit/database
 ```
 
-The `.env.example` credentials are for local development only. Set a unique administrator password of at least 16 characters in `.env` before seeding. Stop the stack with `docker compose -f docker/compose.yml down`; add `-v` only when you intend to delete local database, Redis, and MinIO data.
+Open the staff portal at `http://localhost:3000`, merchant portal at `http://localhost:3001`, rider PWA at `http://localhost:3002`, public website at `http://localhost:3003`, and API health at `http://localhost:4000/api/health`. The seeded Super Admin uses `SHIPIT_ADMIN_EMAIL`; demo merchant and rider logins are `merchant@glowaura.co.ke` and `rider@shipit.co.ke`. All seeded accounts use the `SHIPIT_ADMIN_PASSWORD` value from `.env`. Mailpit is at `http://localhost:8025`; MinIO console is at `http://localhost:9001`.
+
+Stop the stack with `docker compose -f docker/compose.yml down`; add `-v` only when you intend to delete local database, Redis, and MinIO data.
 
 ## Backend Integrations
 

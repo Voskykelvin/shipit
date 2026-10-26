@@ -5,7 +5,14 @@ build/
 out/
 .env
 .env.local
-.env.*.local
+.env.*
+!.env.example
+!**/.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.jks
 *.log
 npm-debug.log*
 yarn-debug.log*

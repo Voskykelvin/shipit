@@ -159,6 +159,23 @@ services:
       api:
         condition: service_healthy
 
+  website:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.dev
+    command: npm run dev:website
+    restart: unless-stopped
+    environment:
+      VITE_API_PROXY_TARGET: http://api:4000
+    ports:
+      - "3003:3003"
+    volumes:
+      - ..:/workspace
+      - shipit_node_modules:/workspace/node_modules
+    depends_on:
+      api:
+        condition: service_healthy
+
 volumes:
   shipit_postgres_data:
   shipit_redis_data:
